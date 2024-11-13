@@ -69,7 +69,7 @@ class ConferenceClient:
         join a conference: send join-conference request with given conference_id, and obtain necessary data to
         """
         print(f"Joining conference {conference_id}")
-       
+
         msg = f"join {conference_id}"
         self.sockets["main"].sendall(msg.encode())
         # print("start sending join")
@@ -85,12 +85,11 @@ class ConferenceClient:
         self.conference_id = conference_id
 
         recv_dict: Dict[str] = json.loads(recv_lines[0])
-        self.sockets["confe"].bind((self.HOST, recv_dict["conf_serve_port"]))
+        self.sockets["confe"].connect((self.HOST, recv_dict["conf_serve_port"]))
         for data_type in self.data_types:
-            self.sockets[data_type].bind(
+            self.sockets[data_type].connect(
                 (self.HOST, recv_dict["data_serve_ports"][data_type])
             )
-
 
     def quit_conference(self):
         """

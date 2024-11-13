@@ -1,6 +1,8 @@
 import asyncio
 import json
 import threading
+import traceback
+
 from util import *
 import socket
 
@@ -79,8 +81,9 @@ class MainServer:
         try:
             new_conference = ConferenceServer()
             new_conference.conference_id = self.conference_count
+            self.conference_conns.append(new_conference.conference_id)
             self.conference_count += 1
-            new_conference.conf_serve_ports = []
+            new_conference.conf_serve_ports = {}
             new_conference.data_serve_ports = {}
 
             new_conference.start()
@@ -133,13 +136,29 @@ class MainServer:
                 self.conference_port_save += 1
 
             print(f"Client {from_info} join conference {conference_id}")
+            print(
+                json.dumps(
+                    {
+                        "conference_id": conference_id,
+                        "conf_serve_port": conference_server.conf_serve_ports[
+                            from_info
+                        ],
+                        "data_serve_ports": conference_server.data_serve_ports[
+                            from_info
+                        ],
+                        "data_types": conference_server.data_types,
+                    }
+                )
+            )
             return (
                 json.dumps(
                     {
                         "conference_id": conference_id,
-                        "conf_serve_port": use_port,
+                        "conf_serve_port": conference_server.conf_serve_ports[
+                            from_info
+                        ],
                         "data_serve_ports": conference_server.data_serve_ports[
-                            use_port
+                            from_info
                         ],
                         "data_types": conference_server.data_types,
                     }
@@ -148,6 +167,7 @@ class MainServer:
             )
         except Exception as e:
             print(f"Error in joining conference: {e}")
+            traceback.print_exc()
             return "Error in joining conference", 500
 
     def handle_quit_conference(self, from_info):
@@ -160,6 +180,7 @@ class MainServer:
             conference_server.conf_serve_ports.pop(from_info)
             self.from_info_to_conference.pop(from_info)
             conference_server.data_serve_ports.pop(from_info)
+            self.conference_conns.pop(conference_id)
 
             # disconnect sockets
             for port in conference_server.client_conns[from_info]:
@@ -184,11 +205,12 @@ class MainServer:
             print(f"Error in cancelling conference: {e}")
             return "Error in cancelling conference", 500
 
-    def request_handler(self, client_socket:socket.socket, from_info):
+    def request_handler(self, client_socket: socket.socket, from_info):
         """
         running task: handle out-meeting (or also in-meeting) requests from clients
         """
         print(f"start connecting {from_info}")
+        from_info = str(from_info)
         while True:
             try:
                 # data = reader.read(100)  # Adjust buffer size as needed
@@ -238,20 +260,17 @@ class MainServer:
                 client_socket, addr = self.main_server.accept()
                 print(f"Accepted connection from {addr}")
                 # Start a new thread to handle the client
-                client_thread = threading.Thread(target=self.request_handler, args=(client_socket,addr,))
-                statue=client_thread.start()
+                client_thread = threading.Thread(
+                    target=self.request_handler,
+                    args=(
+                        client_socket,
+                        addr,
+                    ),
+                )
+                statue = client_thread.start()
         except KeyboardInterrupt:
             print("Shutting down the server...")
-        finally:
             self.main_server.close()
-        # loop = asyncio.new_event_loop()
-        # asyncio.set_event_loop(loop)
-        # loop.run_until_complete(self.accept_connections(loop))
-        # try:
-        #     loop.run_forever()
-        # finally:
-        #     loop.close()
-
 
 
 if __name__ == "__main__":
