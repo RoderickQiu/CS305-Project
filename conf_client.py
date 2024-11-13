@@ -1,13 +1,23 @@
 from util import *
-
-
+import socket
+from typing import Dict
+import json
 class ConferenceClient:
     def __init__(
         self,
+        HOST:str,
+        PORT:str
     ):
         # sync client
+        self.data_types = [
+            "screen",
+            "camera",
+            "audio",
+            "text"
+        ]  # example data types in a video conference
+        self.conference_id=-1
         self.is_working = True
-        self.server_addr = None  # server addr
+        self.HOST = HOST  # server addr
         self.on_meeting = False  # status
         self.conns = (
             None  # you may need to maintain multiple conns for a single conference
@@ -18,25 +28,79 @@ class ConferenceClient:
         self.conference_info = (
             None  # you may need to save and update some conference_info regularly
         )
-
         self.recv_data = None  # you may need to save received streamd data from other clients in conference
+        self.sockets:Dict[str,socket.socket]={}
+        self.sockets["main"]=socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sockets["confe"]=socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        for data_type in self.data_types:
+            if data_type=="text":
+                self.sockets[data_type]=socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            else :
+                self.sockets[data_type]=socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+        self.sockets["main"].connect((HOST, PORT))
 
     def create_conference(self):
         """
         create a conference: send create-conference request to server and obtain necessary data to
         """
+        ok=False
+        recv_lines=[]
+        conference_id=-1
+        while not ok:
+            msg="create"  
+            self.sockets["main"].sendall(msg.encode())
+            self.recv_data=self.sockets["main"].recv(1024).decode()
+            self.output_data(self.sockets["main"])
+
+            recv_lines=self.recv_data.splitlines()
+            if recv_lines[-1]=="200":
+                ok=True
+            else:
+                continue
+
+            conference_id=int(recv_lines[0])
+            
+        
+        self.join_conference(conference_id)
         pass
 
-    def join_conference(self, conference_id):
+    def join_conference(self, conference_id:int):
         """
         join a conference: send join-conference request with given conference_id, and obtain necessary data to
         """
+        self.on_meeting=True
+        self.conference_id=conference_id
+        ok=False
+
+        while not ok:
+
+            msg=f"join {conference_id}"
+            self.sockets["main"].sendall(msg.encode())
+            self.recv_data=self.sockets["main"].recv(1024).decode()
+            self.output_data(self.sockets["main"])
+
+            recv_lines=self.recv_data.splitlines()
+            if recv_lines[-1]=="200":
+                ok=True
+            else:
+                continue
+
+            recv_dict:Dict[str]=json.loads(recv_lines[0])
+            self.sockets["confe"].bind((self.HOST,recv_dict["conf_serve_port"]))
+            for data_type in self.data_types:
+                self.sockets[data_type].bind((self.HOST,recv_dict["data_serve_ports"][data_type]))
+
+            
+
+        json.dumps()
         pass
 
     def quit_conference(self):
         """
         quit your on-going conference
         """
+
         pass
 
     def cancel_conference(self):
@@ -66,10 +130,12 @@ class ConferenceClient:
         you can create other functions for receiving various kinds of data
         """
 
-    def output_data(self):
+    def output_data(self,Socket:socket.socket):
         """
         running task: output received stream data
         """
+        (host,port)=Socket.getpeername()
+        print(f"{host}:{port}\n{self.recv_data}")
 
     def start_conference(self):
         """
@@ -133,5 +199,5 @@ class ConferenceClient:
 
 
 if __name__ == "__main__":
-    client1 = ConferenceClient()
+    client1 = ConferenceClient(SERVER_IP,MAIN_SERVER_PORT)
     client1.start()
