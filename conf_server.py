@@ -1,6 +1,6 @@
 import asyncio
 import json
-
+import threading
 from util import *
 import socket
 
@@ -184,41 +184,42 @@ class MainServer:
             print(f"Error in cancelling conference: {e}")
             return "Error in cancelling conference", 500
 
-    async def request_handler(self, reader, writer, from_info):
+    def request_handler(self, client_socket:socket.socket, from_info):
         """
         running task: handle out-meeting (or also in-meeting) requests from clients
         """
-        try:
-            data = await reader.read(100)  # Adjust buffer size as needed
-            message = data.decode()
-            request = message.split(" ")
-            print(f"Received {message} from {from_info}")
+        print(f"start connecting {from_info}")
+        while True:
+            try:
+                # data = reader.read(100)  # Adjust buffer size as needed
+                message = client_socket.recv(1024).decode()
+                request = message.split(" ")
+                print(f"Received {message} from {from_info}")
 
-            action = request[0]
-            response = ""
-            status_code = 400
+                action = request[0]
+                response = ""
+                status_code = 400
 
-            if action == "create":
-                conference_id, status_code = self.handle_create_conference()
-                response = str(conference_id)
+                if action == "create":
+                    conference_id, status_code = self.handle_create_conference()
+                    response = str(conference_id)
 
-            elif action == "join":
-                conference_id = int(request[1])
-                response, status_code = self.handle_join_conference(
-                    from_info, conference_id
-                )
+                elif action == "join":
+                    conference_id = int(request[1])
+                    response, status_code = self.handle_join_conference(
+                        from_info, conference_id
+                    )
 
-            elif action == "quit_conference":
-                response, status_code = self.handle_quit_conference(from_info)
+                elif action == "quit_conference":
+                    response, status_code = self.handle_quit_conference(from_info)
 
-            elif action == "cancel_conference":
-                response, status_code = self.handle_cancel_conference(from_info)
+                elif action == "cancel_conference":
+                    response, status_code = self.handle_cancel_conference(from_info)
 
-            print(response + "\n" + str(status_code))
-            writer.write((response + "\n" + str(status_code)).encode())
-            await writer.drain()
-        except Exception as e:
-            print(f"Error handling request: {e}")
+                print(response + "\n" + str(status_code))
+                client_socket.sendall((response + "\n" + str(status_code)).encode())
+            except Exception as e:
+                print(f"Error handling request: {e}")
 
     def start(self):
         """
@@ -231,21 +232,26 @@ class MainServer:
         self.main_server.listen(10)
         print("Server listening on port", self.server_port)
 
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(self.accept_connections(loop))
         try:
-            loop.run_forever()
+            while True:
+                # Accept a new client connection
+                client_socket, addr = self.main_server.accept()
+                print(f"Accepted connection from {addr}")
+                # Start a new thread to handle the client
+                client_thread = threading.Thread(target=self.request_handler, args=(client_socket,addr,))
+                statue=client_thread.start()
+        except KeyboardInterrupt:
+            print("Shutting down the server...")
         finally:
-            loop.close()
+            self.main_server.close()
+        # loop = asyncio.new_event_loop()
+        # asyncio.set_event_loop(loop)
+        # loop.run_until_complete(self.accept_connections(loop))
+        # try:
+        #     loop.run_forever()
+        # finally:
+        #     loop.close()
 
-    async def accept_connections(self, loop):
-        self.main_server.setblocking(False)
-        while True:
-            client_socket, addr = await loop.sock_accept(self.main_server)
-            print(f"New connection from {addr}")
-            reader, writer = await asyncio.open_connection(sock=client_socket)
-            loop.create_task(self.request_handler(reader, writer, addr))
 
 
 if __name__ == "__main__":

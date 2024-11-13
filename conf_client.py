@@ -47,22 +47,19 @@ class ConferenceClient:
         create a conference: send create-conference request to server and obtain necessary data to
         """
         print("Creating a conference")
-        ok = False
         recv_lines = []
         conference_id = -1
-        while not ok:
-            msg = "create"
-            self.sockets["main"].sendall(msg.encode())
-            self.recv_data = self.sockets["main"].recv(1024).decode()
-            self.output_data(self.sockets["main"])
+        msg = "create"
+        self.sockets["main"].sendall(msg.encode())
+        self.recv_data = self.sockets["main"].recv(1024).decode()
+        self.output_data(self.sockets["main"])
 
-            recv_lines = self.recv_data.splitlines()
-            if recv_lines[-1] == "200":
-                ok = True
-            else:
-                continue
+        recv_lines = self.recv_data.splitlines()
+        if not recv_lines[-1] == "200":
+            print(f"Error {recv_lines[-1]}!")
+            return
 
-            conference_id = int(recv_lines[0])
+        conference_id = int(recv_lines[0])
 
         self.join_conference(conference_id)
         pass
@@ -72,31 +69,28 @@ class ConferenceClient:
         join a conference: send join-conference request with given conference_id, and obtain necessary data to
         """
         print(f"Joining conference {conference_id}")
+       
+        msg = f"join {conference_id}"
+        self.sockets["main"].sendall(msg.encode())
+        # print("start sending join")
+        self.recv_data = self.sockets["main"].recv(1024).decode()
+        self.output_data(self.sockets["main"])
+
+        recv_lines = self.recv_data.splitlines()
+        if not recv_lines[-1] == "200":
+            print(f"Error {recv_lines[-1]}!")
+            return
+
         self.on_meeting = True
         self.conference_id = conference_id
-        ok = False
 
-        while not ok:
-            msg = f"join {conference_id}"
-            self.sockets["main"].sendall(msg.encode())
-            self.recv_data = self.sockets["main"].recv(1024).decode()
-            self.output_data(self.sockets["main"])
+        recv_dict: Dict[str] = json.loads(recv_lines[0])
+        self.sockets["confe"].bind((self.HOST, recv_dict["conf_serve_port"]))
+        for data_type in self.data_types:
+            self.sockets[data_type].bind(
+                (self.HOST, recv_dict["data_serve_ports"][data_type])
+            )
 
-            recv_lines = self.recv_data.splitlines()
-            if recv_lines[-1] == "200":
-                ok = True
-            else:
-                continue
-
-            recv_dict: Dict[str] = json.loads(recv_lines[0])
-            self.sockets["confe"].bind((self.HOST, recv_dict["conf_serve_port"]))
-            for data_type in self.data_types:
-                self.sockets[data_type].bind(
-                    (self.HOST, recv_dict["data_serve_ports"][data_type])
-                )
-
-        json.dumps()
-        pass
 
     def quit_conference(self):
         """
