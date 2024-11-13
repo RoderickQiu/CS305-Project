@@ -85,7 +85,7 @@ class MainServer:
 
             new_conference.start()
             self.conference_servers[new_conference.conference_id] = new_conference
-            print(f"Create conference, id ${new_conference.conference_id}")
+            print(f"Create conference, id {new_conference.conference_id}")
             return new_conference.conference_id, 200
         except Exception as e:
             print(f"Error in creating conference: {e}")
@@ -100,6 +100,7 @@ class MainServer:
             return "Conference not found", 404
 
         try:
+            print(f"Joining conference {conference_id} ...")
             self.from_info_to_conference[from_info] = conference_id
             conference_server = self.conference_servers[conference_id]
             conference_server.clients_info.append(from_info)
@@ -178,7 +179,7 @@ class MainServer:
             conference_id = self.from_info_to_conference[from_info]
             conference_server = self.conference_servers[conference_id]
             conference_server.cancel_conference()
-            print(f"Cancel conference, id ${conference_id}")
+            print(f"Cancel conference, id {conference_id}")
         except Exception as e:
             print(f"Error in cancelling conference: {e}")
             return "Error in cancelling conference", 500
@@ -190,9 +191,10 @@ class MainServer:
         try:
             data = await reader.read(100)  # Adjust buffer size as needed
             message = data.decode()
-            request = json.loads(message)
+            request = message.split(" ")
+            print(f"Received {message} from {from_info}")
 
-            action = request.get("action")
+            action = request[0]
             response = ""
             status_code = 400
 
@@ -201,7 +203,7 @@ class MainServer:
                 response = str(conference_id)
 
             elif action == "join":
-                conference_id = request.get("conference_id")
+                conference_id = int(request[1])
                 response, status_code = self.handle_join_conference(
                     from_info, conference_id
                 )
@@ -212,15 +214,11 @@ class MainServer:
             elif action == "cancel_conference":
                 response, status_code = self.handle_cancel_conference(from_info)
 
-            writer.write(
-                json.dumps({"status_code": status_code, "response": response}).encode()
-            )
+            print(response + "\n" + str(status_code))
+            writer.write((response + "\n" + str(status_code)).encode())
             await writer.drain()
         except Exception as e:
             print(f"Error handling request: {e}")
-        finally:
-            writer.close()
-            await writer.wait_closed()
 
     def start(self):
         """

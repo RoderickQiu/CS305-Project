@@ -46,6 +46,7 @@ class ConferenceClient:
         """
         create a conference: send create-conference request to server and obtain necessary data to
         """
+        print("Creating a conference")
         ok = False
         recv_lines = []
         conference_id = -1
@@ -70,12 +71,12 @@ class ConferenceClient:
         """
         join a conference: send join-conference request with given conference_id, and obtain necessary data to
         """
+        print(f"Joining conference {conference_id}")
         self.on_meeting = True
         self.conference_id = conference_id
         ok = False
 
         while not ok:
-
             msg = f"join {conference_id}"
             self.sockets["main"].sendall(msg.encode())
             self.recv_data = self.sockets["main"].recv(1024).decode()
