@@ -56,7 +56,7 @@ class ConferenceClient:
 
         recv_lines = self.recv_data.splitlines()
         if not recv_lines[-1] == "200":
-            print(f"Error {recv_lines[-1]}!")
+            print(f"An error occurs, please input again!")
             return
 
         conference_id = int(recv_lines[0])
@@ -78,7 +78,7 @@ class ConferenceClient:
 
         recv_lines = self.recv_data.splitlines()
         if not recv_lines[-1] == "200":
-            print(f"Error {recv_lines[-1]}!")
+            print(f"An error occurs, please input again!")
             return
 
         self.on_meeting = True
