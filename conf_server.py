@@ -1,6 +1,7 @@
 import asyncio
 import json
 import threading
+import time
 import traceback
 
 from util import *
@@ -36,14 +37,10 @@ class ConferenceServer:
             print("Something about server status")
             await asyncio.sleep(LOG_INTERVAL)
 
-    async def cancel_conference(self):
+    def cancel_conference(self):
         """
         handle cancel conference request: disconnect all connections to cancel the conference
         """
-        for client in self.clients_info:
-            for port in self.client_conns[client]:
-                self.client_conns[client][port].close()
-
         self.conf_serve_ports = {}
         self.data_serve_ports = {}
         self.clients_info = []
@@ -67,6 +64,7 @@ class MainServer:
         self.conference_count = 0
         self.conference_port_save = main_port + 1
         self.conference_conns = []
+        self.conference_ids = []
         self.from_info_to_conference = {}
         self.conference_servers = (
             {}
@@ -81,7 +79,7 @@ class MainServer:
         try:
             new_conference = ConferenceServer()
             new_conference.conference_id = self.conference_count
-            self.conference_conns.append(new_conference.conference_id)
+            self.conference_ids.append(new_conference.conference_id)
             self.conference_count += 1
             new_conference.conf_serve_ports = {}
             new_conference.data_serve_ports = {}
@@ -98,7 +96,7 @@ class MainServer:
         """
         join conference: search corresponding conference_info and ConferenceServer, and reply necessary info to client
         """
-        if conference_id not in self.conference_conns:
+        if conference_id not in self.conference_ids:
             print(f"Conference {conference_id} not found")
             return "Conference not found", 404
 
@@ -136,20 +134,6 @@ class MainServer:
                 self.conference_port_save += 1
 
             print(f"Client {from_info} join conference {conference_id}")
-            print(
-                json.dumps(
-                    {
-                        "conference_id": conference_id,
-                        "conf_serve_port": conference_server.conf_serve_ports[
-                            from_info
-                        ],
-                        "data_serve_ports": conference_server.data_serve_ports[
-                            from_info
-                        ],
-                        "data_types": conference_server.data_types,
-                    }
-                )
-            )
             return (
                 json.dumps(
                     {
@@ -180,11 +164,12 @@ class MainServer:
             conference_server.conf_serve_ports.pop(from_info)
             self.from_info_to_conference.pop(from_info)
             conference_server.data_serve_ports.pop(from_info)
-            self.conference_conns.pop(conference_id)
 
             # disconnect sockets
-            for port in conference_server.client_conns[from_info]:
-                conference_server.client_conns[from_info][port].close()
+            # for port in conference_server.client_conns[from_info]:
+            #     conference_server.client_conns[from_info][port].close()
+            # conference_server.client_conns[from_info] = None
+            del conference_server.client_conns[from_info]
 
             print(f"Client {from_info} quit conference {conference_id}")
             return "Quit conference successfully", 200
@@ -192,17 +177,27 @@ class MainServer:
             print(f"Error in quitting conference: {e}")
             return "Error in quitting conference", 500
 
-    def handle_cancel_conference(self, from_info):
+    def handle_cancel_conference(self, from_info, current_client):
         """
         cancel conference (in-meeting request, a ConferenceServer should be closed by the MainServer)
         """
         try:
             conference_id = self.from_info_to_conference[from_info]
             conference_server = self.conference_servers[conference_id]
+
+            # TODO: this workaround manipulated client.sendall
+            # TODO: and should be altered after written text stream
+            for client in self.conference_conns:
+                if client is not current_client:
+                    client.sendall(("Cancelled successfully\n204").encode())
+
             conference_server.cancel_conference()
+
             print(f"Cancel conference, id {conference_id}")
+            return "Cancelled successfully", 204  # use 204 for cancelling
         except Exception as e:
             print(f"Error in cancelling conference: {e}")
+            traceback.print_exc()
             return "Error in cancelling conference", 500
 
     def request_handler(self, client_socket: socket.socket, from_info):
@@ -232,15 +227,18 @@ class MainServer:
                         from_info, conference_id
                     )
 
-                elif action == "quit_conference":
+                elif action == "quit":
                     response, status_code = self.handle_quit_conference(from_info)
 
-                elif action == "cancel_conference":
-                    response, status_code = self.handle_cancel_conference(from_info)
+                elif action == "cancel":
+                    response, status_code = self.handle_cancel_conference(
+                        from_info, client_socket
+                    )
 
                 print(response + "\n" + str(status_code))
                 client_socket.sendall((response + "\n" + str(status_code)).encode())
             except Exception as e:
+                traceback.print_exc()
                 print(f"Error handling request: {e}")
 
     def start(self):
@@ -258,6 +256,7 @@ class MainServer:
             while True:
                 # Accept a new client connection
                 client_socket, addr = self.main_server.accept()
+                self.conference_conns.append(client_socket)
                 print(f"Accepted connection from {addr}")
                 # Start a new thread to handle the client
                 client_thread = threading.Thread(

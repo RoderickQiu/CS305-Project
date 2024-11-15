@@ -28,7 +28,11 @@ class ConferenceClient:
         )
         self.recv_data = None  # you may need to save received streamd data from other clients in conference
         self.sockets: Dict[str, socket.socket] = {}
+
         self.sockets["main"] = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sockets["main"].connect((HOST, PORT))
+
+    def create_sockets(self):
         self.sockets["confe"] = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         for data_type in self.data_types:
             if data_type == "text":
@@ -40,8 +44,6 @@ class ConferenceClient:
                     socket.AF_INET, socket.SOCK_DGRAM
                 )
 
-        self.sockets["main"].connect((HOST, PORT))
-
     def create_conference(self):
         """
         create a conference: send create-conference request to server and obtain necessary data to
@@ -49,13 +51,17 @@ class ConferenceClient:
         print("Creating a conference")
         recv_lines = []
         conference_id = -1
+        self.create_sockets()
         msg = "create"
         self.sockets["main"].sendall(msg.encode())
         self.recv_data = self.sockets["main"].recv(1024).decode()
         self.output_data(self.sockets["main"])
 
         recv_lines = self.recv_data.splitlines()
-        if not recv_lines[-1] == "200":
+        if recv_lines[-1] == "204":
+            self.configure_cancelled()  # TODO this and similar code: workaround, might have a better way
+            return
+        elif not recv_lines[-1] == "200":
             print(f"An error occurs, please input again!")
             return
 
@@ -68,16 +74,23 @@ class ConferenceClient:
         """
         join a conference: send join-conference request with given conference_id, and obtain necessary data to
         """
+        if self.on_meeting:
+            print("Already joined a meeting")
+            return
+
         print(f"Joining conference {conference_id}")
+        self.create_sockets()
 
         msg = f"join {conference_id}"
         self.sockets["main"].sendall(msg.encode())
-        # print("start sending join")
         self.recv_data = self.sockets["main"].recv(1024).decode()
         self.output_data(self.sockets["main"])
 
         recv_lines = self.recv_data.splitlines()
-        if not recv_lines[-1] == "200":
+        if recv_lines[-1] == "204":
+            self.configure_cancelled()
+            return
+        elif not recv_lines[-1] == "200":
             print(f"An error occurs, please input again!")
             return
 
@@ -95,14 +108,57 @@ class ConferenceClient:
         """
         quit your on-going conference
         """
+        msg = f"quit"
+        self.sockets["main"].sendall(msg.encode())
+        self.recv_data = self.sockets["main"].recv(1024).decode()
+        self.output_data(self.sockets["main"])
 
-        pass
+        recv_lines = self.recv_data.splitlines()
+        print(recv_lines)
+        if recv_lines[-1] == "204":
+            self.configure_cancelled()
+            return
+        elif not recv_lines[-1] == "200":
+            print(f"An error occurs, please input again!")
+            return
+
+        self.configure_cancelled()
+
+    def configure_cancelled(self):
+        try:
+            self.sockets["confe"].close()
+            for data_type in self.data_types:
+                if self.sockets[data_type] is not None:
+                    self.sockets[data_type].close()
+            del self.sockets["confe"]
+            for data_type in self.data_types:
+                del self.sockets[data_type]
+
+            self.on_meeting = False
+            self.conference_id = -1
+        except:
+            return
 
     def cancel_conference(self):
         """
         cancel your on-going conference (when you are the conference manager): ask server to close all clients
         """
-        pass
+        msg = f"cancel"
+        self.sockets["main"].sendall(msg.encode())
+        self.recv_data = self.sockets["main"].recv(1024).decode()
+        self.output_data(self.sockets["main"])
+
+        recv_lines = self.recv_data.splitlines()
+        print(recv_lines)
+        if recv_lines[-1] == "204":
+            self.configure_cancelled()
+            return
+        elif not recv_lines[-1] == "200":
+            print(f"An error occurs, please input again!")
+            return
+
+        self.on_meeting = False
+        self.conference_id = -1
 
     def keep_share(
         self, data_type, send_conn, capture_function, compress=None, fps_or_frequency=30
