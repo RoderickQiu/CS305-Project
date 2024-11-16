@@ -2,8 +2,7 @@ from util import *
 import socket
 from typing import Dict
 import json
-
-
+import threading
 class ConferenceClient:
     def __init__(self, HOST: str, PORT: str):
         # sync client
@@ -68,6 +67,9 @@ class ConferenceClient:
         conference_id = int(recv_lines[0])
 
         self.join_conference(conference_id)
+        
+        self.start_conference()
+
         pass
 
     def join_conference(self, conference_id: int):
@@ -103,6 +105,9 @@ class ConferenceClient:
             self.sockets[data_type].connect(
                 (self.HOST, recv_dict["data_serve_ports"][data_type])
             )
+        
+        self.start_conference()
+
 
     def quit_conference(self):
         """
@@ -159,6 +164,8 @@ class ConferenceClient:
 
         self.on_meeting = False
         self.conference_id = -1
+    
+    
 
     def keep_share(
         self, data_type, send_conn, capture_function, compress=None, fps_or_frequency=30
@@ -194,12 +201,45 @@ class ConferenceClient:
         and
         start necessary running task for conference
         """
+        if not self.on_meeting:  # 检查是否已加入会议
+          print("[Error]: Not in a conference.")
+          return
+        threading.Thread(target=self.recv_text_messages, daemon=True).start()
 
     def close_conference(self):
         """
         close all conns to servers or other clients and cancel the running tasks
         pay attention to the exception handling
         """
+        
+    def send_text_message(self, message: str):
+        """
+        Send a text message to the server for broadcasting to other clients.
+        """
+        if not self.on_meeting:
+           print("[Warn]: You must join a conference to send messages.")
+           return
+
+        try:
+           msg = f"text: {message}"
+           self.sockets["text"].sendall(msg.encode())
+           print(f"[Info]: Message sent: {message}")
+        except KeyError:
+           print(f"[Error]: Text socket is not initialized.")
+        except Exception as e:
+           print(f"[Error]: Failed to send message. {e}")
+
+    def recv_text_messages(self):
+        """
+             Continuously receive text messages from the server.
+        """
+        try:
+            while self.on_meeting:
+                data = self.sockets["text"].recv(1024).decode()  # Blocking receive
+                if data:
+                    print(f"[Message]: {data}")
+        except Exception as e:
+            print(f"[Error]: Failed to receive messages. {e}")
 
     def start(self):
         """
@@ -240,6 +280,10 @@ class ConferenceClient:
                     data_type = fields[1]
                     if data_type in self.share_data.keys():
                         self.share_switch(data_type)
+                
+                elif fields[0] == "send":
+                    message = fields[1]
+                    self.send_text_message(message)
                 else:
                     recognized = False
             else:

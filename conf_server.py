@@ -31,6 +31,37 @@ class ConferenceServer:
         """
         running task: receive sharing stream data from a client and decide how to forward them to the rest clients
         """
+        addr=writer.get_extra_info('peername')
+        client_id = f"{addr[0]}:{addr[1]}" 
+        self.client_conns[client_id] = (reader, writer)
+        try:
+            while self.running:
+                data = await reader.read(1024)  #  buffer size 
+                if not data:
+                    break
+                message=data.decode().strip()
+                if data_type=="text":
+                    print(f"Received data from {addr} with type {data_type}")
+                    timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+                    formatted_message = f"[{timestamp}] {client_id}: {message}"
+                    print(f"Received message: {formatted_message}")
+
+                    # Forward message to all other clients
+                    await self.broadcast_message(formatted_message, client_id)
+        except asyncio.CancelledError:
+            pass
+        finally:
+            # Remove client on disconnect
+            addr = writer.get_extra_info('peername')
+            print(f"Client {addr} disconnected")
+            writer.close()
+            await writer.wait_closed()
+                  
+    async def broadcast_message(self, message, sender_id):
+        for client_id,(reader, writer) in self.client_conns.items():
+            if client_id != sender_id:
+                writer.write(message.encode())
+                await writer.drain()
 
     async def log(self):
         while self.running:
