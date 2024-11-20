@@ -2,6 +2,7 @@ import json
 
 HELP = (
     "Create         : create an conference\n"
+    "List           : list all available conferences\n"
     "Join [conf_id ]: join a conference with conference ID\n"
     "Quit           : quit an on-going conference\n"
     "Cancel         : cancel your on-going conference (only the manager)\n"

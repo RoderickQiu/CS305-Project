@@ -190,6 +190,16 @@ class MainServer:
         try:
             conference_id = self.from_info_to_conference[from_info]
             conference_server = self.conference_servers[conference_id]
+
+            if (
+                len(conference_server.client_conns.items()) == 1
+            ):  # is the only client in the conference, so can shut down the conference
+                self.handle_cancel_conference(from_info, True)
+                print(
+                    f"Client {from_info} quit and shut down conference {conference_id}"
+                )
+                return "Quit conference successfully", 200
+
             conference_server.conf_serve_ports.pop(from_info)
             self.from_info_to_conference.pop(from_info)
             conference_server.data_serve_ports.pop(from_info)
@@ -231,17 +241,18 @@ class MainServer:
         try:
             if from_info in self.from_info_to_conference:
                 conference_id = self.from_info_to_conference[from_info]
-                conference_server = self.conference_servers[conference_id]
-                if from_info in conference_server.conf_serve_ports:
-                    conference_server.conf_serve_ports.pop(from_info)
-                if from_info in conference_server.data_serve_ports:
-                    conference_server.data_serve_ports.pop(from_info)
-                if from_info in conference_server.clients_udp_addrs:
-                    conference_server.clients_udp_addrs.pop(from_info)
-                if from_info in self.from_info_to_conference:
-                    del self.from_info_to_conference[from_info]
-                if from_info in conference_server.client_conns:
-                    del conference_server.client_conns[from_info]
+                if conference_id in self.conference_servers:
+                    conference_server = self.conference_servers[conference_id]
+                    if from_info in conference_server.conf_serve_ports:
+                        conference_server.conf_serve_ports.pop(from_info)
+                    if from_info in conference_server.data_serve_ports:
+                        conference_server.data_serve_ports.pop(from_info)
+                    if from_info in conference_server.clients_udp_addrs:
+                        conference_server.clients_udp_addrs.pop(from_info)
+                    if from_info in self.from_info_to_conference:
+                        del self.from_info_to_conference[from_info]
+                    if from_info in conference_server.client_conns:
+                        del conference_server.client_conns[from_info]
 
             current_client.close()
             self.conference_conns.remove(current_client)
@@ -253,7 +264,7 @@ class MainServer:
             traceback.print_exc()
             return "Error in handling client exit", 500
 
-    def handle_cancel_conference(self, from_info):
+    def handle_cancel_conference(self, from_info, forced=False):
         """
         cancel conference (in-meeting request, a ConferenceServer should be closed by the MainServer)
         """
@@ -261,11 +272,13 @@ class MainServer:
             conference_id = self.from_info_to_conference[from_info]
             conference_server: ConferenceServer = self.conference_servers[conference_id]
 
-            if conference_server.host_info != from_info:
+            if conference_server.host_info != from_info and not forced:
                 return "Only the manager can cancel the conference", 403
 
             conference_server.broadcast_message(CANCEL_MSG, from_info, "text")
             conference_server.cancel_conference()
+            self.conference_ids.remove(conference_id)
+            self.conference_servers.pop(conference_id)
 
             print(f"Cancel conference, id {conference_id}")
             return "Cancelled successfully", 200
@@ -302,6 +315,10 @@ class MainServer:
                     response, status_code = self.handle_join_conference(
                         from_info, conference_id
                     )
+
+                elif action == "list":
+                    response = json.dumps(self.conference_ids)
+                    status_code = 200
 
                 elif action == "quit":
                     response, status_code = self.handle_quit_conference(from_info)

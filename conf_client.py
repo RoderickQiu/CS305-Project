@@ -160,8 +160,6 @@ class ConferenceClient:
             print("[Warn]: Not in a conference.")
             return
 
-        self.on_meeting = False
-
         msg = f"cancel"
         self.sockets["main"].sendall(msg.encode())
         self.recv_data = self.sockets["main"].recv(CHUNK).decode()
@@ -174,9 +172,10 @@ class ConferenceClient:
         elif not recv_lines[-1] == "200":
             print(f"[Error]: An error occurs, please input again!")
             return
-
-        self.on_meeting = False
-        self.conference_id = -1
+        else:
+            self.configure_cancelled()
+            self.on_meeting = False
+            self.conference_id = -1
 
     def keep_share(
         self, data_type, send_conn, capture_function, compress=None, fps_or_frequency=30
@@ -203,8 +202,8 @@ class ConferenceClient:
         """
         running task: output received stream data
         """
-        (host, port) = socket.getpeername()
-        print(f"{host}:{port}\n{self.recv_data}")
+        # (host, port) = socket.getpeername()
+        # print(f"{host}:{port}\n{self.recv_data}")
 
     def start_conference(self, conference_id: int):
         """
@@ -228,6 +227,24 @@ class ConferenceClient:
         threading.Thread(target=self.recv_text_messages, daemon=True).start()
 
         print(f"[Info]: Conference {self.conference_id} started.")
+
+    def list_conferences(self):
+        """
+        init conns when create or join a conference with necessary conference_info
+        and
+        start necessary running task for conference
+        """
+        msg = f"list"
+        self.sockets["main"].sendall(msg.encode())
+        self.recv_data = self.sockets["main"].recv(CHUNK).decode()
+        self.output_data(self.sockets["main"])
+
+        recv_lines = self.recv_data.splitlines()
+        if not recv_lines[-1] == "200":
+            print(f"[Error]: An error occurs, please input again!")
+            return
+
+        print(f"[Info]: List of ongoing conferences: {recv_lines[0]}")
 
     def send_text_message(self, message: str):
         """
@@ -294,6 +311,8 @@ class ConferenceClient:
                     self.cancel_conference()
                 elif cmd_input == "exit":
                     self.perform_exit()
+                elif cmd_input == "list":
+                    self.list_conferences()
                 else:
                     recognized = False
             elif len(fields) == 2:
