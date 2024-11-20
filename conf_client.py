@@ -3,6 +3,8 @@ import socket
 from typing import Dict
 import json
 import threading
+
+
 class ConferenceClient:
     def __init__(self, HOST: str, PORT: str):
         # sync client
@@ -27,6 +29,10 @@ class ConferenceClient:
         )
         self.recv_data = None  # you may need to save received streamd data from other clients in conference
         self.sockets: Dict[str, socket.socket] = {}
+        self.data_serve_ports = {}
+        self.udp_addrs = {}
+        self.server_host = HOST
+        self.udp_addr_count = CLIENT_TCP_PORT
 
         self.sockets["main"] = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sockets["main"].connect((HOST, PORT))
@@ -34,14 +40,7 @@ class ConferenceClient:
     def create_sockets(self):
         self.sockets["confe"] = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         for data_type in self.data_types:
-            if data_type == "text":
-                self.sockets[data_type] = socket.socket(
-                    socket.AF_INET, socket.SOCK_STREAM
-                )
-            else:
-                self.sockets[data_type] = socket.socket(
-                    socket.AF_INET, socket.SOCK_DGRAM
-                )
+            self.sockets[data_type] = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
     def create_conference(self):
         """
@@ -53,7 +52,7 @@ class ConferenceClient:
         self.create_sockets()
         msg = "create"
         self.sockets["main"].sendall(msg.encode())
-        self.recv_data = self.sockets["main"].recv(1024).decode()
+        self.recv_data = self.sockets["main"].recv(CHUNK).decode()
         self.output_data(self.sockets["main"])
 
         recv_lines = self.recv_data.splitlines()
@@ -67,10 +66,6 @@ class ConferenceClient:
         conference_id = int(recv_lines[0])
 
         self.join_conference(conference_id)
-        
-        self.start_conference()
-
-        pass
 
     def join_conference(self, conference_id: int):
         """
@@ -85,7 +80,7 @@ class ConferenceClient:
 
         msg = f"join {conference_id}"
         self.sockets["main"].sendall(msg.encode())
-        self.recv_data = self.sockets["main"].recv(1024).decode()
+        self.recv_data = self.sockets["main"].recv(CHUNK).decode()
         self.output_data(self.sockets["main"])
 
         recv_lines = self.recv_data.splitlines()
@@ -101,21 +96,25 @@ class ConferenceClient:
 
         recv_dict: Dict[str] = json.loads(recv_lines[0])
         self.sockets["confe"].connect((self.HOST, recv_dict["conf_serve_port"]))
+        self.data_serve_ports = recv_dict["data_serve_ports"]
+        self.server_host = recv_dict["host"]
         for data_type in self.data_types:
-            self.sockets[data_type].connect(
-                (self.HOST, recv_dict["data_serve_ports"][data_type])
-            )
-        
-        self.start_conference()
+            self.sockets[data_type].bind((self.HOST, self.udp_addr_count))
+            self.udp_addrs[data_type] = (self.HOST, self.udp_addr_count)
+            self.udp_addr_count += 1
 
+        save_client_port(self.udp_addr_count)
+        self.start_conference(conference_id)
 
     def quit_conference(self):
         """
         quit your on-going conference
         """
+        self.on_meeting = False
+
         msg = f"quit"
         self.sockets["main"].sendall(msg.encode())
-        self.recv_data = self.sockets["main"].recv(1024).decode()
+        self.recv_data = self.sockets["main"].recv(CHUNK).decode()
         self.output_data(self.sockets["main"])
 
         recv_lines = self.recv_data.splitlines()
@@ -148,9 +147,11 @@ class ConferenceClient:
         """
         cancel your on-going conference (when you are the conference manager): ask server to close all clients
         """
+        self.on_meeting = False
+
         msg = f"cancel"
         self.sockets["main"].sendall(msg.encode())
-        self.recv_data = self.sockets["main"].recv(1024).decode()
+        self.recv_data = self.sockets["main"].recv(CHUNK).decode()
         self.output_data(self.sockets["main"])
 
         recv_lines = self.recv_data.splitlines()
@@ -164,8 +165,6 @@ class ConferenceClient:
 
         self.on_meeting = False
         self.conference_id = -1
-    
-    
 
     def keep_share(
         self, data_type, send_conn, capture_function, compress=None, fps_or_frequency=30
@@ -188,58 +187,72 @@ class ConferenceClient:
         you can create other functions for receiving various kinds of data
         """
 
-    def output_data(self, Socket: socket.socket):
+    def output_data(self, socket: socket.socket):
         """
         running task: output received stream data
         """
-        (host, port) = Socket.getpeername()
+        (host, port) = socket.getpeername()
         print(f"{host}:{port}\n{self.recv_data}")
 
-    def start_conference(self):
+    def start_conference(self, conference_id: int):
         """
         init conns when create or join a conference with necessary conference_info
         and
         start necessary running task for conference
         """
+        msg = f"link {conference_id} {str(self.udp_addrs).replace(' ', '')}"
+        self.sockets["main"].sendall(msg.encode())
+        self.recv_data = self.sockets["main"].recv(CHUNK).decode()
+        self.output_data(self.sockets["main"])
+
+        recv_lines = self.recv_data.splitlines()
+        print(recv_lines)
+        if recv_lines[-1] == "204":
+            self.configure_cancelled()
+            return
+        elif not recv_lines[-1] == "200":
+            print(f"An error occurs, please input again!")
+            return
+
         if not self.on_meeting:  # 检查是否已加入会议
-          print("[Error]: Not in a conference.")
-          return
+            print("[Error]: Not in a conference.")
+            return
         threading.Thread(target=self.recv_text_messages, daemon=True).start()
 
-    def close_conference(self):
-        """
-        close all conns to servers or other clients and cancel the running tasks
-        pay attention to the exception handling
-        """
-        
+        print(f"[Info]: Conference {self.conference_id} started.")
+
     def send_text_message(self, message: str):
         """
         Send a text message to the server for broadcasting to other clients.
         """
         if not self.on_meeting:
-           print("[Warn]: You must join a conference to send messages.")
-           return
+            print("[Warn]: You must join a conference to send messages.")
+            return
 
         try:
-           msg = f"text: {message}"
-           self.sockets["text"].sendall(msg.encode())
-           print(f"[Info]: Message sent: {message}")
+            msg = f"text: {message}"
+            self.sockets["text"].sendto(
+                msg.encode(), (self.server_host, self.data_serve_ports["text"])
+            )
+            print(f"[Info]: Message sent: {message}")
         except KeyError:
-           print(f"[Error]: Text socket is not initialized.")
+            print(f"[Error]: Text socket is not initialized.")
         except Exception as e:
-           print(f"[Error]: Failed to send message. {e}")
+            if self.on_meeting:
+                print(f"[Error]: Failed to send message. {e}")
 
     def recv_text_messages(self):
         """
-             Continuously receive text messages from the server.
+        Continuously receive text messages from the server.
         """
         try:
             while self.on_meeting:
-                data = self.sockets["text"].recv(1024).decode()  # Blocking receive
+                data = self.sockets["text"].recv(CHUNK).decode()  # Blocking receive
                 if data:
                     print(f"[Message]: {data}")
         except Exception as e:
-            print(f"[Error]: Failed to receive messages. {e}")
+            if self.on_meeting:
+                print(f"[Error]: Failed to receive messages. {e}")
 
     def start(self):
         """
@@ -273,14 +286,13 @@ class ConferenceClient:
                 if fields[0] == "join":
                     input_conf_id = fields[1]
                     if input_conf_id.isdigit():
-                        self.join_conference(input_conf_id)
+                        self.join_conference(int(input_conf_id))
                     else:
                         print("[Warn]: Input conference ID must be in digital form")
                 elif fields[0] == "switch":
                     data_type = fields[1]
                     if data_type in self.share_data.keys():
                         self.share_switch(data_type)
-                
                 elif fields[0] == "send":
                     message = fields[1]
                     self.send_text_message(message)
