@@ -32,7 +32,7 @@ class ConferenceClient:
         self.data_serve_ports = {}
         self.udp_addrs = {}
         self.server_host = HOST
-        self.udp_addr_count = CLIENT_TCP_PORT
+        self.udp_addr_count = get_client_port()
 
         self.sockets["main"] = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sockets["main"].connect((HOST, PORT))
@@ -46,7 +46,7 @@ class ConferenceClient:
         """
         create a conference: send create-conference request to server and obtain necessary data to
         """
-        print("Creating a conference")
+        print("[Info]: Creating a conference")
         recv_lines = []
         conference_id = -1
         self.create_sockets()
@@ -56,11 +56,8 @@ class ConferenceClient:
         self.output_data(self.sockets["main"])
 
         recv_lines = self.recv_data.splitlines()
-        if recv_lines[-1] == "204":
-            self.configure_cancelled()  # TODO this and similar code: workaround, might have a better way
-            return
-        elif not recv_lines[-1] == "200":
-            print(f"An error occurs, please input again!")
+        if not recv_lines[-1] == "200":
+            print(f"[Error]: An error occurs, please input again!")
             return
 
         conference_id = int(recv_lines[0])
@@ -72,10 +69,10 @@ class ConferenceClient:
         join a conference: send join-conference request with given conference_id, and obtain necessary data to
         """
         if self.on_meeting:
-            print("Already joined a meeting")
+            print("[Warn]: Already joined a meeting")
             return
 
-        print(f"Joining conference {conference_id}")
+        print(f"[Info]: Joining conference {conference_id}")
         self.create_sockets()
 
         msg = f"join {conference_id}"
@@ -84,11 +81,8 @@ class ConferenceClient:
         self.output_data(self.sockets["main"])
 
         recv_lines = self.recv_data.splitlines()
-        if recv_lines[-1] == "204":
-            self.configure_cancelled()
-            return
-        elif not recv_lines[-1] == "200":
-            print(f"An error occurs, please input again!")
+        if not recv_lines[-1] == "200":
+            print(f"[Error]: An error occurs, please input again!")
             return
 
         self.on_meeting = True
@@ -98,6 +92,7 @@ class ConferenceClient:
         self.sockets["confe"].connect((self.HOST, recv_dict["conf_serve_port"]))
         self.data_serve_ports = recv_dict["data_serve_ports"]
         self.server_host = recv_dict["host"]
+        self.udp_addr_count = get_client_port()
         for data_type in self.data_types:
             self.sockets[data_type].bind((self.HOST, self.udp_addr_count))
             self.udp_addrs[data_type] = (self.HOST, self.udp_addr_count)
@@ -110,6 +105,10 @@ class ConferenceClient:
         """
         quit your on-going conference
         """
+        if not self.on_meeting:
+            print("[Warn]: Not in a conference.")
+            return
+
         self.on_meeting = False
 
         msg = f"quit"
@@ -118,12 +117,8 @@ class ConferenceClient:
         self.output_data(self.sockets["main"])
 
         recv_lines = self.recv_data.splitlines()
-        print(recv_lines)
-        if recv_lines[-1] == "204":
-            self.configure_cancelled()
-            return
-        elif not recv_lines[-1] == "200":
-            print(f"An error occurs, please input again!")
+        if not recv_lines[-1] == "200":
+            print(f"[Error]: An error occurs, please input again!")
             return
 
         self.configure_cancelled()
@@ -143,10 +138,28 @@ class ConferenceClient:
         except:
             return
 
+    def perform_exit(self):
+        if self.on_meeting:
+            self.quit_conference()
+
+        msg = f"exit"
+        self.sockets["main"].sendall(msg.encode())
+        self.recv_data = self.sockets["main"].recv(CHUNK).decode()
+        self.output_data(self.sockets["main"])
+
+        self.is_working = False
+        self.sockets["main"].close()
+
+        exit(0)
+
     def cancel_conference(self):
         """
         cancel your on-going conference (when you are the conference manager): ask server to close all clients
         """
+        if not self.on_meeting:
+            print("[Warn]: Not in a conference.")
+            return
+
         self.on_meeting = False
 
         msg = f"cancel"
@@ -155,12 +168,11 @@ class ConferenceClient:
         self.output_data(self.sockets["main"])
 
         recv_lines = self.recv_data.splitlines()
-        print(recv_lines)
-        if recv_lines[-1] == "204":
-            self.configure_cancelled()
+        if recv_lines[-1] == "403":
+            print(f"[Error]: Only the manager can cancel the conference.")
             return
         elif not recv_lines[-1] == "200":
-            print(f"An error occurs, please input again!")
+            print(f"[Error]: An error occurs, please input again!")
             return
 
         self.on_meeting = False
@@ -206,12 +218,8 @@ class ConferenceClient:
         self.output_data(self.sockets["main"])
 
         recv_lines = self.recv_data.splitlines()
-        print(recv_lines)
-        if recv_lines[-1] == "204":
-            self.configure_cancelled()
-            return
-        elif not recv_lines[-1] == "200":
-            print(f"An error occurs, please input again!")
+        if not recv_lines[-1] == "200":
+            print(f"[Error]: An error occurs, please input again!")
             return
 
         if not self.on_meeting:  # 检查是否已加入会议
@@ -249,6 +257,10 @@ class ConferenceClient:
             while self.on_meeting:
                 data = self.sockets["text"].recv(CHUNK).decode()  # Blocking receive
                 if data:
+                    if CANCEL_MSG in data:  # Check if the conference has been cancelled
+                        print(f"[Info]: {CANCEL_MSG}")
+                        self.configure_cancelled()
+                        break
                     print(f"[Message]: {data}")
         except Exception as e:
             if self.on_meeting:
@@ -280,6 +292,8 @@ class ConferenceClient:
                     self.quit_conference()
                 elif cmd_input == "cancel":
                     self.cancel_conference()
+                elif cmd_input == "exit":
+                    self.perform_exit()
                 else:
                     recognized = False
             elif len(fields) == 2:
@@ -306,5 +320,5 @@ class ConferenceClient:
 
 
 if __name__ == "__main__":
-    client1 = ConferenceClient(SERVER_IP, MAIN_SERVER_PORT)
+    client1 = ConferenceClient(SERVER_IP, get_server_port())
     client1.start()

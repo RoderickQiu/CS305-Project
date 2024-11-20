@@ -6,14 +6,12 @@ HELP = (
     "Quit           : quit an on-going conference\n"
     "Cancel         : cancel your on-going conference (only the manager)\n"
     "Send [message] : send a text message to all participants\n"
+    "Exit           : exit the program\n"
     "Help           : show this help message\n"
 )
+CANCEL_MSG = "The conference has been canceled by the manager"
 
 SERVER_IP = "127.0.0.1"
-with open("data.json", "r") as f:
-    data = json.load(f)
-    MAIN_SERVER_PORT = data["server"]["host"]
-    CLIENT_TCP_PORT = data["client"]["port"]
 TIMEOUT_SERVER = 5
 DGRAM_SIZE = 1500  # UDP
 LOG_INTERVAL = 2
@@ -49,3 +47,15 @@ def save_client_port(port):
         data["client"]["port"] = port
     with open("data.json", "w") as f:
         json.dump(data, f)
+
+
+def get_server_port():
+    with open("data.json", "r") as f:
+        data = json.load(f)
+    return data["server"]["host"]
+
+
+def get_client_port():
+    with open("data.json", "r") as f:
+        data = json.load(f)
+    return data["client"]["port"]

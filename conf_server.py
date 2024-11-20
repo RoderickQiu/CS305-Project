@@ -15,6 +15,7 @@ class ConferenceServer:
         # async server
         self.running = False
         self.conference_id = None  # conference_id for distinguish difference conference
+        self.host_info = ""  # to distinguish if the client created the conference
         self.conf_serve_ports = {}
         self.data_serve_ports = {}
         self.data_types = [
@@ -97,15 +98,14 @@ class MainServer:
             {}
         )  # self.conference_servers[conference_id] = ConferenceManager
 
-    def handle_create_conference(
-        self,
-    ):
+    def handle_create_conference(self, from_info):
         """
         create conference: create and start the corresponding ConferenceServer, and reply necessary info to client
         """
         try:
             new_conference = ConferenceServer()
             new_conference.conference_id = self.conference_count
+            new_conference.host_info = from_info
             self.conference_ids.append(new_conference.conference_id)
             self.conference_count += 1
             new_conference.conf_serve_ports = {}
@@ -193,11 +193,6 @@ class MainServer:
             conference_server.conf_serve_ports.pop(from_info)
             self.from_info_to_conference.pop(from_info)
             conference_server.data_serve_ports.pop(from_info)
-
-            # disconnect sockets
-            # for port in conference_server.client_conns[from_info]:
-            #     conference_server.client_conns[from_info][port].close()
-            # conference_server.client_conns[from_info] = None
             del conference_server.client_conns[from_info]
 
             print(f"Client {from_info} quit conference {conference_id}")
@@ -229,24 +224,51 @@ class MainServer:
             print(f"Error in starting data stream: {e}")
             return "Error in starting data stream", 500
 
-    def handle_cancel_conference(self, from_info, current_client):
+    def handle_client_exit(self, from_info, current_client):
+        """
+        exit the program (in-meeting request)
+        """
+        try:
+            if from_info in self.from_info_to_conference:
+                conference_id = self.from_info_to_conference[from_info]
+                conference_server = self.conference_servers[conference_id]
+                if from_info in conference_server.conf_serve_ports:
+                    conference_server.conf_serve_ports.pop(from_info)
+                if from_info in conference_server.data_serve_ports:
+                    conference_server.data_serve_ports.pop(from_info)
+                if from_info in conference_server.clients_udp_addrs:
+                    conference_server.clients_udp_addrs.pop(from_info)
+                if from_info in self.from_info_to_conference:
+                    del self.from_info_to_conference[from_info]
+                if from_info in conference_server.client_conns:
+                    del conference_server.client_conns[from_info]
+
+            current_client.close()
+            self.conference_conns.remove(current_client)
+
+            print(f"Client {from_info} exit successfully")
+            return "Client exit successfully", 200
+        except Exception as e:
+            print(f"Error in handling client exit: {e}")
+            traceback.print_exc()
+            return "Error in handling client exit", 500
+
+    def handle_cancel_conference(self, from_info):
         """
         cancel conference (in-meeting request, a ConferenceServer should be closed by the MainServer)
         """
         try:
             conference_id = self.from_info_to_conference[from_info]
-            conference_server = self.conference_servers[conference_id]
+            conference_server: ConferenceServer = self.conference_servers[conference_id]
 
-            # TODO: this workaround manipulated client.sendall
-            # TODO: and should be altered after written text stream
-            for client in self.conference_conns:
-                if client is not current_client:
-                    client.sendall(("Cancelled successfully\n204").encode())
+            if conference_server.host_info != from_info:
+                return "Only the manager can cancel the conference", 403
 
+            conference_server.broadcast_message(CANCEL_MSG, from_info, "text")
             conference_server.cancel_conference()
 
             print(f"Cancel conference, id {conference_id}")
-            return "Cancelled successfully", 204  # use 204 for cancelling
+            return "Cancelled successfully", 200
         except Exception as e:
             print(f"Error in cancelling conference: {e}")
             traceback.print_exc()
@@ -270,7 +292,9 @@ class MainServer:
                 status_code = 400
 
                 if action == "create":
-                    conference_id, status_code = self.handle_create_conference()
+                    conference_id, status_code = self.handle_create_conference(
+                        from_info
+                    )
                     response = str(conference_id)
 
                 elif action == "join":
@@ -283,9 +307,11 @@ class MainServer:
                     response, status_code = self.handle_quit_conference(from_info)
 
                 elif action == "cancel":
-                    response, status_code = self.handle_cancel_conference(
-                        from_info, client_socket
-                    )
+                    response, status_code = self.handle_cancel_conference(from_info)
+
+                elif action == "exit":
+                    self.handle_client_exit(from_info, client_socket)
+                    break
 
                 elif action == "link":
                     conference_id = int(request[1])
