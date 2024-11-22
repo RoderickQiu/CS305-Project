@@ -177,6 +177,7 @@ class ConferenceClient:
             return
         else:
             self.configure_cancelled()
+            self.on_camera=False
             self.on_meeting = False
             self.conference_id = -1
 
@@ -295,48 +296,51 @@ class ConferenceClient:
         if not self.on_camera:
             print("[Warn]: You must open the camera to show your image!")
             return
-        cap = cv2.VideoCapture(0)
-        CHUNK_SIZE=4096
-        try:
-            while cap.isOpened():
-                open,img=cap.read()
-                if not open:
-                    break
-                img_flipped = cv2.flip(img, 1)
-                gray = cv2.cvtColor(img_flipped,cv2.COLOR_BGR2GRAY)
-                frame_data=pickle.dumps(img_flipped)
-               
-                total_size = len(frame_data)  # 获取总大小
-                total_chunks = (total_size + CHUNK_SIZE - 1) // CHUNK_SIZE  # 计算总块数
-                for i in range(total_chunks):
-                    start = i * CHUNK_SIZE
-                    end = start + CHUNK_SIZE
-                    chunk = frame_data[start:end]
-
-                    packet = pickle.dumps((i, total_chunks, chunk))  # 将元组序列化
+        def video_stream():
+            cap = cv2.VideoCapture(0)
+            CHUNK_SIZE=4096
+            try:
+                while cap.isOpened() and self.on_camera:
+                    open,img=cap.read()
+                    if not open:
+                        break
+                    img_flipped = cv2.flip(img, 1)
+                    gray = cv2.cvtColor(img_flipped,cv2.COLOR_BGR2GRAY)
+                    frame_data=pickle.dumps(img_flipped)
+                    total_size = len(frame_data)  # 获取总大小
+                    self.sockets["camera"].sendto(struct.pack("!L", total_size), (self.server_host, self.data_serve_ports["camera"]))
+                    total_chunks = (total_size + CHUNK_SIZE - 1) // CHUNK_SIZE  # 计算总块数
+                    for i in range(total_chunks):
+                        start = i * CHUNK_SIZE
+                        end = start + CHUNK_SIZE
+                        chunk = frame_data[start:end]
+                        packet = pickle.dumps((i, total_chunks, chunk))  # 将元组序列化
         
                      # 发送数据包
-                    self.sockets["camera"].sendto(
+                        self.sockets["camera"].sendto(
                         packet, (self.server_host, self.data_serve_ports["camera"])
-                    )
+                         )
                 # 显示本地视频
-                cv2.imshow('You', img_flipped)   
-                if cv2.waitKey(1) & 0xFF == ord('q'):
-                    self.on_camera=False
-                    break
-        finally:
-            cap.release()
-            cv2.destroyAllWindows()
+                    cv2.imshow('You', img_flipped)   
+                    if cv2.waitKey(1) & 0xFF == ord('q'):
+                        self.on_camera=False
+                        break
+            finally:
+                cap.release()
+                cv2.destroyAllWindows()
+                
+        threading.Thread(target=video_stream, daemon=True).start()
     
     def recv_video(self):
         try:
             while self.on_meeting:
                 data, _ = self.sockets["camera"].recvfrom(4)
                 size = struct.unpack("!L", data)[0]
-                frame_data, _ = self.sockets["camera"].recvfrom(size)
-                frame = pickle.loads(frame_data)  # 反序列化视频帧
-
-                
+                buffer=b''
+                while len(buffer) < size:
+                    packet,_=self.sockets["camera"].recvfrom(min(size-len(buffer),4096))
+                    buffer+=packet
+                frame = pickle.loads(buffer)  # 反序列化视频帧              
                 cv2.imshow('Meeting', frame)
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     break
