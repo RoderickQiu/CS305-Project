@@ -3,7 +3,9 @@ import socket
 from typing import Dict
 import json
 import threading
-
+import cv2
+import struct
+import pickle
 
 class ConferenceClient:
     def __init__(self, HOST: str, PORT: str):
@@ -18,6 +20,7 @@ class ConferenceClient:
         self.is_working = True
         self.HOST = HOST  # server addr
         self.on_meeting = False  # status
+        self.on_camera=False
         self.conns = (
             None  # you may need to maintain multiple conns for a single conference
         )
@@ -225,6 +228,8 @@ class ConferenceClient:
             print("[Error]: Not in a conference.")
             return
         threading.Thread(target=self.recv_text_messages, daemon=True).start()
+        threading.Thread(target=self.recv_video, daemon=True).start()
+        
 
         print(f"[Info]: Conference {self.conference_id} started.")
 
@@ -282,6 +287,67 @@ class ConferenceClient:
         except Exception as e:
             if self.on_meeting:
                 print(f"[Error]: Failed to receive messages. {e}")
+    
+    def send_video(self):
+        if not self.on_meeting:
+            print("[Warn]: You must join a conference to share videos!")
+            return
+        if not self.on_camera:
+            print("[Warn]: You must open the camera to show your image!")
+            return
+        cap = cv2.VideoCapture(0)
+        CHUNK_SIZE=4096
+        try:
+            while cap.isOpened():
+                open,img=cap.read()
+                if not open:
+                    break
+                img_flipped = cv2.flip(img, 1)
+                gray = cv2.cvtColor(img_flipped,cv2.COLOR_BGR2GRAY)
+                frame_data=pickle.dumps(img_flipped)
+               
+                total_size = len(frame_data)  # 获取总大小
+                total_chunks = (total_size + CHUNK_SIZE - 1) // CHUNK_SIZE  # 计算总块数
+                for i in range(total_chunks):
+                    start = i * CHUNK_SIZE
+                    end = start + CHUNK_SIZE
+                    chunk = frame_data[start:end]
+
+                    packet = pickle.dumps((i, total_chunks, chunk))  # 将元组序列化
+        
+                     # 发送数据包
+                    self.sockets["camera"].sendto(
+                        packet, (self.server_host, self.data_serve_ports["camera"])
+                    )
+                # 显示本地视频
+                cv2.imshow('You', img_flipped)   
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    self.on_camera=False
+                    break
+        finally:
+            cap.release()
+            cv2.destroyAllWindows()
+    
+    def recv_video(self):
+        try:
+            while self.on_meeting:
+                data, _ = self.sockets["camera"].recvfrom(4)
+                size = struct.unpack("!L", data)[0]
+                frame_data, _ = self.sockets["camera"].recvfrom(size)
+                frame = pickle.loads(frame_data)  # 反序列化视频帧
+
+                
+                cv2.imshow('Meeting', frame)
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    break
+        except Exception as e:
+            if self.on_meeting:
+                print(f"[Error]: Failed to receive others video. {e}")
+        
+        
+
+        
+            
 
     def start(self):
         """
@@ -313,6 +379,7 @@ class ConferenceClient:
                     self.perform_exit()
                 elif cmd_input == "list":
                     self.list_conferences()
+                
                 else:
                     recognized = False
             elif len(fields) == 2:
@@ -329,6 +396,15 @@ class ConferenceClient:
                 elif fields[0] == "send":
                     message = fields[1]
                     self.send_text_message(message)
+                elif fields[0] == "open":
+                    if fields[1]=="camera":
+                        self.on_camera=True
+                        self.send_video()
+                elif fields[0] == "close":
+                    if fields[1]=="camera":
+                        self.on_camera=False
+                    """else if fields[1]=="Audio":
+                        self.recv_video()"""
                 else:
                     recognized = False
             else:

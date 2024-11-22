@@ -9,6 +9,10 @@ HELP = (
     "Send [message] : send a text message to all participants\n"
     "Exit           : exit the program\n"
     "Help           : show this help message\n"
+    "Open Camera:   : open camera\n"
+    "Close Camera:  : close camera\n"
+    "Open Mic       : open microphone\n"
+    "Close Mic      : close microphone\n"
 )
 CANCEL_MSG = "The conference has been canceled by the manager"
 
