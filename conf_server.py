@@ -36,11 +36,14 @@ class ConferenceServer:
         from_info = str(from_info)
         try:
             while self.running:
-                data, addr = conn_socket.recvfrom(CHUNK)
+                if data_type!="camera":
+                    data, addr = conn_socket.recvfrom(CHUNK)
+                elif data_type=="camera":
+                    data, addr = conn_socket.recvfrom(65535)
                 if not data:
                     break
-                message = data.decode().strip()
                 if data_type == "text":
+                    message = data.decode().strip()
                     timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
                     formatted_message = f"[{timestamp}] {from_info}: {message}"
                     print(
@@ -49,6 +52,10 @@ class ConferenceServer:
 
                     # Forward message to all other clients
                     self.broadcast_message(formatted_message, from_info, data_type)
+                if data_type == "camera":
+                    # Forward camera data to all other clients
+                    self.broadcast_message(data, from_info, data_type)
+                    
         except asyncio.CancelledError:
             pass
 
@@ -58,7 +65,12 @@ class ConferenceServer:
                 port = self.data_serve_ports[client_id][data_type]
                 writer: socket.socket = self.client_conns[client_id][port]
                 addr = self.clients_udp_addrs[client_id][data_type]
-                writer.sendto(message.encode(), addr)
+                if data_type == "text":
+                    writer.sendto(message.encode(), addr)
+                elif data_type == "camera":
+                    writer.sendto(message, addr)
+
+                
 
     async def log(self):
         while self.running:

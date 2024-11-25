@@ -6,6 +6,7 @@ import threading
 import cv2
 import struct
 import pickle
+import time
 
 class ConferenceClient:
     def __init__(self, HOST: str, PORT: str):
@@ -298,28 +299,40 @@ class ConferenceClient:
             return
         def video_stream():
             cap = cv2.VideoCapture(0)
-            CHUNK_SIZE=4096
+            CHUNK_SIZE=992
+            encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 60]
             try:
                 while cap.isOpened() and self.on_camera:
                     open,img=cap.read()
                     if not open:
                         break
                     img_flipped = cv2.flip(img, 1)
-                    gray = cv2.cvtColor(img_flipped,cv2.COLOR_BGR2GRAY)
+                    result, imgencode = cv2.imencode('.jpg', img_flipped, encode_param)
+                  #  print(len(imgencode))
+                    frame_data = imgencode.tobytes()  # 转换为字节流
+                    total_size = len(frame_data)  # 获取总大小
+                    self.sockets["camera"].sendto(
+                        frame_data, (self.server_host, self.data_serve_ports["camera"])
+                         )
+                    time.sleep(0.01)
+                    
+                    
+                    """
                     frame_data=pickle.dumps(img_flipped)
                     total_size = len(frame_data)  # 获取总大小
                     self.sockets["camera"].sendto(struct.pack("!L", total_size), (self.server_host, self.data_serve_ports["camera"]))
-                    total_chunks = (total_size + CHUNK_SIZE - 1) // CHUNK_SIZE  # 计算总块数
+                    total_chunks =total_size // 1018+1 # 计算总块数
                     for i in range(total_chunks):
                         start = i * CHUNK_SIZE
                         end = start + CHUNK_SIZE
                         chunk = frame_data[start:end]
                         packet = pickle.dumps((i, total_chunks, chunk))  # 将元组序列化
-        
                      # 发送数据包
                         self.sockets["camera"].sendto(
                         packet, (self.server_host, self.data_serve_ports["camera"])
                          )
+                         """
+              
                 # 显示本地视频
                     cv2.imshow('You', img_flipped)   
                     if cv2.waitKey(1) & 0xFF == ord('q'):
@@ -334,16 +347,30 @@ class ConferenceClient:
     def recv_video(self):
         try:
             while self.on_meeting:
+                """
                 data, _ = self.sockets["camera"].recvfrom(4)
                 size = struct.unpack("!L", data)[0]
                 buffer=b''
-                while len(buffer) < size:
-                    packet,_=self.sockets["camera"].recvfrom(min(size-len(buffer),4096))
+                i=0
+                while len(buffer) < size:                  
+                    packet,_=self.sockets["camera"].recvfrom(1024)
                     buffer+=packet
-                frame = pickle.loads(buffer)  # 反序列化视频帧              
-                cv2.imshow('Meeting', frame)
+                print(i)
+                #frame = pickle.loads(buffer)  # 反序列化视频帧
+                """
+                packet,_=self.sockets["camera"].recvfrom(40000)    
+                nparr = np.frombuffer(packet, dtype=np.uint8)
+                img_decoded = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                if img_decoded is not None:
+                    cv2.imshow('Meeting', img_decoded)
+                    cv2.waitKey(1)  # 保持窗口打开，1 毫秒等待时间
+                else:
+                    print("Failed to decode the image")
+                #black_frame = np.zeros((480, 640, 3), dtype=np.uint8)  
+               #cv2.imshow('Meeting', black_frame)
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     break
+            cv2.destroyAllWindows()
         except Exception as e:
             if self.on_meeting:
                 print(f"[Error]: Failed to receive others video. {e}")
