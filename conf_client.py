@@ -301,41 +301,49 @@ class ConferenceClient:
 
         def video_stream():
             cap = cv2.VideoCapture(0)
-            CHUNK_SIZE = 992
+            CHUNK_SIZE = 1024
             encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 60]
             try:
                 while cap.isOpened() and self.on_camera:
                     open, img = cap.read()
                     if not open:
                         break
-                    img_flipped = cv2.flip(img, 1)
-                    # img_flipped = cv2.resize(img_flipped, (720, 480))
+                    img_resized = cv2.resize(img, (640, 480))
 
-                    result, imgencode = cv2.imencode(".jpg", img_flipped, encode_param)
+                    img_flipped = cv2.flip(img_resized, 1)
+                    # img_flipped = cv2.resize(img_flipped, (720, 480))
+                    """result, imgencode = cv2.imencode(".jpg", img_flipped, encode_param)
                     #  print(len(imgencode))
                     frame_data = imgencode.tobytes()  # 转换为字节流
                     print(len(frame_data))
                     total_size = len(frame_data)  # 获取总大小
+                    print(total_size)
                     self.sockets["camera"].sendto(
                         frame_data, (self.server_host, self.data_serve_ports["camera"])
                     )
-                    time.sleep(0.01)
+                    time.sleep(0.02)"""
+                    
 
-                    """
-                    frame_data=pickle.dumps(img_flipped)
+                    result, imgencode = cv2.imencode(".jpg", img_flipped, encode_param)
+                    frame_data=imgencode.tobytes()
                     total_size = len(frame_data)  # 获取总大小
                     self.sockets["camera"].sendto(struct.pack("!L", total_size), (self.server_host, self.data_serve_ports["camera"]))
-                    total_chunks =total_size // 1018+1 # 计算总块数
+                    total_chunks = (total_size + CHUNK_SIZE - 1) // CHUNK_SIZE
                     for i in range(total_chunks):
                         start = i * CHUNK_SIZE
                         end = start + CHUNK_SIZE
                         chunk = frame_data[start:end]
-                        packet = pickle.dumps((i, total_chunks, chunk))  # 将元组序列化
+                        chunk_data = (
+                        i.to_bytes(2, 'big') +              # 分块索引（2字节）
+                        total_chunks.to_bytes(2, 'big') +   # 总分块数（2字节）
+                        frame_data[i * CHUNK_SIZE : (i + 1) * CHUNK_SIZE]  # 分块内容
+                        )
+                       # packet = pickle.dumps((i, total_chunks, chunk))  # 将元组序列化
                      # 发送数据包
                         self.sockets["camera"].sendto(
-                        packet, (self.server_host, self.data_serve_ports["camera"])
+                        chunk_data, (self.server_host, self.data_serve_ports["camera"])
                          )
-                         """
+                         
 
                     # 显示本地视频
                     cv2.imshow("You", img_flipped)
@@ -350,6 +358,9 @@ class ConferenceClient:
 
     def recv_video(self):
         try:
+            CHUNK_SIZE = 1024  # 分块大小
+            buffer = {}        # 缓存分块
+            total_chunks = None
             while self.on_meeting:
                 """
                 data, _ = self.sockets["camera"].recvfrom(4)
@@ -362,10 +373,37 @@ class ConferenceClient:
                 print(i)
                 #frame = pickle.loads(buffer)  # 反序列化视频帧
                 """
-                packet, _ = self.sockets["camera"].recvfrom(40000)
+                data, _ = self.sockets["camera"].recvfrom(4)
+                frame_size = struct.unpack("!L", data)[0]
+                total_chunks = (frame_size + CHUNK_SIZE - 1) // CHUNK_SIZE
+                buffer = [None] * total_chunks  # 初始化缓存列表
+
+                for _ in range(total_chunks):
+                    chunk_data, _ = self.sockets["camera"].recvfrom(CHUNK_SIZE + 4)
+                    chunk_index = int.from_bytes(chunk_data[:2], 'big')
+                    total_chunks_received = int.from_bytes(chunk_data[2:4], 'big')
+                
+                    if total_chunks_received != total_chunks:
+                        continue  # 分块数量不一致，丢弃
+
+                    buffer[chunk_index] = chunk_data[4:]  # 存储分块数据
+                """buffer = [None] * total_chunks  # 初始化缓存列表
+                packet, _ = self.sockets["camera"].recvfrom(4)
                 nparr = np.frombuffer(packet, dtype=np.uint8)
-                img_decoded = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-                if img_decoded is not None:
+                img_decoded = cv2.imdecode(nparr, cv2.IMREAD_COLOR)"""
+                
+                if None not in buffer:
+                    frame_data = b''.join(buffer)
+                    nparr = np.frombuffer(frame_data, dtype=np.uint8)
+                    img_decoded = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                
+                    if img_decoded is not None:
+                        cv2.imshow("Meeting", img_decoded)
+                        if cv2.waitKey(1) & 0xFF == ord("q"):
+                            break
+                else:
+                    print("Failed to decode the image")
+                """if img_decoded is not None:
                     cv2.imshow("Meeting", img_decoded)
                     cv2.waitKey(1)  # 保持窗口打开，1 毫秒等待时间
                 else:
@@ -373,7 +411,7 @@ class ConferenceClient:
                 # black_frame = np.zeros((480, 640, 3), dtype=np.uint8)
                 # cv2.imshow('Meeting', black_frame)
                 if cv2.waitKey(1) & 0xFF == ord("q"):
-                    break
+                    break"""
             cv2.destroyAllWindows()
         except Exception as e:
             if self.on_meeting:
