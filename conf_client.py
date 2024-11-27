@@ -10,7 +10,7 @@ import time
 
 
 class ConferenceClient:
-    def __init__(self, HOST: str, PORT: int):
+    def __init__(self, HOST: str, CLIENT_IP: str, PORT: int):
         # sync client
         self.data_types = [
             "screen",
@@ -21,6 +21,7 @@ class ConferenceClient:
         self.conference_id = -1
         self.is_working = True
         self.HOST = HOST  # server addr
+        self.CLIENT_IP = CLIENT_IP  # my own addr
         self.on_meeting = False  # status
         self.on_camera = False
         self.conns = (
@@ -99,8 +100,8 @@ class ConferenceClient:
         self.server_host = recv_dict["host"]
         self.udp_addr_count = get_client_port()
         for data_type in self.data_types:
-            self.sockets[data_type].bind((self.HOST, self.udp_addr_count))
-            self.udp_addrs[data_type] = (self.HOST, self.udp_addr_count)
+            self.sockets[data_type].bind((self.CLIENT_IP, self.udp_addr_count))
+            self.udp_addrs[data_type] = (self.CLIENT_IP, self.udp_addr_count)
             self.udp_addr_count += 1
 
         save_client_port(self.udp_addr_count)
@@ -308,9 +309,12 @@ class ConferenceClient:
                     if not open:
                         break
                     img_flipped = cv2.flip(img, 1)
+                    # img_flipped = cv2.resize(img_flipped, (720, 480))
+
                     result, imgencode = cv2.imencode(".jpg", img_flipped, encode_param)
                     #  print(len(imgencode))
                     frame_data = imgencode.tobytes()  # 转换为字节流
+                    print(len(frame_data))
                     total_size = len(frame_data)  # 获取总大小
                     self.sockets["camera"].sendto(
                         frame_data, (self.server_host, self.data_serve_ports["camera"])
@@ -393,7 +397,7 @@ class ConferenceClient:
             )
             fields = cmd_input.split(maxsplit=1)
             if len(fields) == 1:
-                if cmd_input in ("?", "？","help"):
+                if cmd_input in ("?", "？", "help"):
                     print(HELP)
                 elif cmd_input == "create":
                     self.create_conference()
@@ -445,5 +449,5 @@ if __name__ == "__main__":
     input_addr = input().split(":")
     input_ip, input_port = input_addr[0], input_addr[1]
     print(f"Connecting to {input_ip}, port is {input_port}")
-    client1 = ConferenceClient(input_ip, int(input_port))
+    client1 = ConferenceClient(input_ip, CLIENT_IP, int(input_port))
     client1.start()

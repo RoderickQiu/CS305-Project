@@ -17,6 +17,7 @@ HELP = (
 CANCEL_MSG = "The conference has been canceled by the manager"
 
 SERVER_IP = "10.27.107.219"
+CLIENT_IP = "10.27.107.219"
 TIMEOUT_SERVER = 5
 DGRAM_SIZE = 1500  # UDP
 LOG_INTERVAL = 2
