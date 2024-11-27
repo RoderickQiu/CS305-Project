@@ -61,14 +61,15 @@ class ConferenceServer:
 
     def broadcast_message(self, message, from_info, data_type):
         for client_id, socket_list in self.client_conns.items():
-            if client_id != from_info:
-                port = self.data_serve_ports[client_id][data_type]
-                writer: socket.socket = self.client_conns[client_id][port]
-                addr = self.clients_udp_addrs[client_id][data_type]
-                if data_type == "text":
+            port = self.data_serve_ports[client_id][data_type]
+            writer: socket.socket = self.client_conns[client_id][port]
+            addr = self.clients_udp_addrs[client_id][data_type]
+            if data_type == "text":
+                if client_id != from_info:
+
                     writer.sendto(message.encode(), addr)
-                elif data_type == "camera":
-                    writer.sendto(message, addr)
+            elif data_type == "camera":
+                writer.sendto(message, addr)
 
     async def log(self):
         while self.running:

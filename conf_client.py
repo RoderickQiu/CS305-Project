@@ -392,7 +392,7 @@ class ConferenceClient:
                             chunk_data,
                             (self.server_host, self.data_serve_ports["camera"]),
                         )
-                        time.sleep(0.005)
+                        time.sleep(0.007)
                         video_images["you"] = get_base64_image(imgencode)
 
                     # 显示本地视频
