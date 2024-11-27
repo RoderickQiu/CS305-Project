@@ -1,3 +1,5 @@
+import os
+import urllib
 from util import *
 import socket
 from typing import Dict
@@ -5,9 +7,7 @@ import json
 import threading
 import cv2
 import struct
-import pickle
 import time
-import matplotlib.pyplot as plt
 from flask import Flask
 from werkzeug.serving import make_server
 import logging
@@ -19,6 +19,15 @@ app = Flask(__name__)
 werkzeug_logger = logging.getLogger("werkzeug")
 werkzeug_logger.setLevel(logging.ERROR)
 video_images = dict()
+
+
+def get_video_view_link(flask_url):
+    file_path = "video.html"
+    absolute_path = os.path.abspath(file_path)
+    file_url = f"file://{absolute_path}"
+    query_params = urllib.parse.urlencode({"url": "http://" + flask_url})
+    full_url = f"{file_url}?{query_params}"
+    print(f"Copy and open {full_url} to see videos")
 
 
 @app.route("/")
@@ -393,13 +402,6 @@ class ConferenceClient:
                             (self.server_host, self.data_serve_ports["camera"]),
                         )
                         time.sleep(0.007)
-                        video_images["you"] = get_base64_image(imgencode)
-
-                    # 显示本地视频
-                    # cv2.imshow("You", img_flipped)
-                    # if cv2.waitKey(1) & 0xFF == ord("q"):
-                    #     self.on_camera = False
-                    #     break
             finally:
                 cap.release()
 
@@ -512,10 +514,11 @@ if __name__ == "__main__":
     flask_port = get_client_port()
     flask_thread = threading.Thread(target=start_flask, args=(CLIENT_IP, flask_port))
     flask_thread.start()
+    get_video_view_link(CLIENT_IP + ":" + str(flask_port))
     save_client_port(flask_port + 1)
 
     print("Please input the server's ip and port, e.g. 127.0.0.1:8888...")
-    input_addr = input().split(":")
+    input_addr = input().strip().split(":")
     input_ip, input_port = input_addr[0], input_addr[1]
     print(f"Connecting to {input_ip}, port is {input_port}")
     client1 = ConferenceClient(input_ip, CLIENT_IP, int(input_port))
