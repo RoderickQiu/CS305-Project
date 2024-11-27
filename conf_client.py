@@ -11,7 +11,9 @@ import matplotlib.pyplot as plt
 from flask import Flask
 from werkzeug.serving import make_server
 import logging
+import random
 
+# 生成一个8位的随机数字
 # flask server thread
 app = Flask(__name__)
 werkzeug_logger = logging.getLogger("werkzeug")
@@ -64,6 +66,8 @@ class ConferenceClient:
         ]  # example data types in a video conference
         self.conference_id = -1
         self.is_working = True
+        self.id= random.randint(10000000, 99999999)
+
         self.HOST = HOST  # server addr
         self.CLIENT_IP = CLIENT_IP  # my own addr
         self.PORT = PORT  # main server port
@@ -363,6 +367,9 @@ class ConferenceClient:
                     result, imgencode = cv2.imencode(".jpg", img_flipped, encode_param)
                     frame_data = imgencode.tobytes()
                     total_size = len(frame_data)  # 获取总大小
+                    id_num = self.id.to_bytes(4, byteorder='big')
+                    # 转换为 4 字节大端序
+                    self.sockets["camera"].sendto(id_num, (self.server_host, self.data_serve_ports["camera"]))
                     self.sockets["camera"].sendto(
                         struct.pack("!L", total_size),
                         (self.server_host, self.data_serve_ports["camera"]),
@@ -383,6 +390,7 @@ class ConferenceClient:
                             chunk_data,
                             (self.server_host, self.data_serve_ports["camera"]),
                         )
+                        time.sleep(0.005)
                         video_images["you"] = get_base64_image(imgencode)
 
                     # 显示本地视频
@@ -399,6 +407,9 @@ class ConferenceClient:
         try:
             CHUNK_SIZE = 1024  # 分块大小
             while self.on_meeting:
+                id, _ = self.sockets["camera"].recvfrom(4)
+                id_num = int.from_bytes(id, byteorder='big') # 大端序解包
+                print(id_num)
                 data, _ = self.sockets["camera"].recvfrom(4)
                 frame_size = struct.unpack("!L", data)[0]
                 total_chunks = (frame_size + CHUNK_SIZE - 1) // CHUNK_SIZE
@@ -420,7 +431,7 @@ class ConferenceClient:
                     img_decoded = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
                     if img_decoded is not None:
-                        video_images["host"] = get_base64_image(img_decoded)
+                        video_images[str(id)] = get_base64_image(img_decoded)
                         # cv2.imshow("Meeting", img_decoded)
                         # if cv2.waitKey(1) & 0xFF == ord("q"):
                         #     break
