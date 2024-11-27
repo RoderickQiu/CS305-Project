@@ -4,6 +4,7 @@ Including data capture, image compression and image overlap
 Note that you can use your own implementation as well :)
 """
 
+import base64
 from io import BytesIO
 import pyaudio
 import cv2
@@ -161,3 +162,9 @@ def decompress_image(image_bytes):
     image = Image.open(img_byte_arr)
 
     return image
+
+
+def get_base64_image(opencv_img):
+    base64_str = base64.b64encode(opencv_img).decode("utf-8")
+    base64_image = f"data:image/jpeg;base64,{base64_str}"
+    return base64_image

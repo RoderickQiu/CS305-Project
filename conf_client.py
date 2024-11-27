@@ -7,6 +7,50 @@ import cv2
 import struct
 import pickle
 import time
+import matplotlib.pyplot as plt
+from flask import Flask
+from werkzeug.serving import make_server
+import logging
+
+# flask server thread
+app = Flask(__name__)
+werkzeug_logger = logging.getLogger("werkzeug")
+werkzeug_logger.setLevel(logging.ERROR)
+video_images = dict()
+
+
+@app.route("/")
+def print_videos():
+    result = "<script>setTimeout(() => {location.reload();}, 50);</script>"
+    for img in video_images:
+        result += str(img) + '<img src="' + str(video_images[img]) + '"/>\n'
+    return result
+
+
+class FlaskServer:
+    def __init__(self, app, host, port):
+        self.host = host
+        self.port = port
+        self.server = make_server(host, port, app)
+        self.ctx = app.app_context()
+        self.ctx.push()
+
+    def start(self):
+        print(f"And running a flask server at {self.host}:{self.port}")
+        self.server.serve_forever()
+
+    def shutdown(self):
+        self.server.shutdown()
+
+
+flask_server: FlaskServer | None = None
+flask_thread: threading.Thread | None = None
+
+
+def start_flask(ip, port):
+    global flask_server
+    flask_server = FlaskServer(app, ip, port)
+    flask_server.start()
 
 
 class ConferenceClient:
@@ -22,6 +66,7 @@ class ConferenceClient:
         self.is_working = True
         self.HOST = HOST  # server addr
         self.CLIENT_IP = CLIENT_IP  # my own addr
+        self.PORT = PORT  # main server port
         self.on_meeting = False  # status
         self.on_camera = False
         self.conns = (
@@ -155,6 +200,10 @@ class ConferenceClient:
 
         self.is_working = False
         self.sockets["main"].close()
+
+        if flask_server is not None and flask_thread is not None:
+            flask_server.shutdown()
+            flask_thread.join()
 
         exit(0)
 
@@ -309,70 +358,47 @@ class ConferenceClient:
                     if not open:
                         break
                     img_resized = cv2.resize(img, (640, 480))
-
                     img_flipped = cv2.flip(img_resized, 1)
-                    # img_flipped = cv2.resize(img_flipped, (720, 480))
-                    """result, imgencode = cv2.imencode(".jpg", img_flipped, encode_param)
-                    #  print(len(imgencode))
-                    frame_data = imgencode.tobytes()  # 转换为字节流
-                    print(len(frame_data))
-                    total_size = len(frame_data)  # 获取总大小
-                    print(total_size)
-                    self.sockets["camera"].sendto(
-                        frame_data, (self.server_host, self.data_serve_ports["camera"])
-                    )
-                    time.sleep(0.02)"""
-                    
 
                     result, imgencode = cv2.imencode(".jpg", img_flipped, encode_param)
-                    frame_data=imgencode.tobytes()
+                    frame_data = imgencode.tobytes()
                     total_size = len(frame_data)  # 获取总大小
-                    self.sockets["camera"].sendto(struct.pack("!L", total_size), (self.server_host, self.data_serve_ports["camera"]))
+                    self.sockets["camera"].sendto(
+                        struct.pack("!L", total_size),
+                        (self.server_host, self.data_serve_ports["camera"]),
+                    )
                     total_chunks = (total_size + CHUNK_SIZE - 1) // CHUNK_SIZE
                     for i in range(total_chunks):
                         start = i * CHUNK_SIZE
                         end = start + CHUNK_SIZE
-                        chunk = frame_data[start:end]
                         chunk_data = (
-                        i.to_bytes(2, 'big') +              # 分块索引（2字节）
-                        total_chunks.to_bytes(2, 'big') +   # 总分块数（2字节）
-                        frame_data[i * CHUNK_SIZE : (i + 1) * CHUNK_SIZE]  # 分块内容
+                            i.to_bytes(2, "big")  # 分块索引（2字节）
+                            + total_chunks.to_bytes(2, "big")  # 总分块数（2字节）
+                            + frame_data[
+                                i * CHUNK_SIZE : (i + 1) * CHUNK_SIZE
+                            ]  # 分块内容
                         )
-                       # packet = pickle.dumps((i, total_chunks, chunk))  # 将元组序列化
-                     # 发送数据包
+                        # 发送数据包
                         self.sockets["camera"].sendto(
-                        chunk_data, (self.server_host, self.data_serve_ports["camera"])
-                         )
-                         
+                            chunk_data,
+                            (self.server_host, self.data_serve_ports["camera"]),
+                        )
+                        video_images["you"] = get_base64_image(imgencode)
 
                     # 显示本地视频
-                    cv2.imshow("You", img_flipped)
-                    if cv2.waitKey(1) & 0xFF == ord("q"):
-                        self.on_camera = False
-                        break
+                    # cv2.imshow("You", img_flipped)
+                    # if cv2.waitKey(1) & 0xFF == ord("q"):
+                    #     self.on_camera = False
+                    #     break
             finally:
                 cap.release()
-                cv2.destroyAllWindows()
 
         threading.Thread(target=video_stream, daemon=True).start()
 
     def recv_video(self):
         try:
             CHUNK_SIZE = 1024  # 分块大小
-            buffer = {}        # 缓存分块
-            total_chunks = None
             while self.on_meeting:
-                """
-                data, _ = self.sockets["camera"].recvfrom(4)
-                size = struct.unpack("!L", data)[0]
-                buffer=b''
-                i=0
-                while len(buffer) < size:
-                    packet,_=self.sockets["camera"].recvfrom(1024)
-                    buffer+=packet
-                print(i)
-                #frame = pickle.loads(buffer)  # 反序列化视频帧
-                """
                 data, _ = self.sockets["camera"].recvfrom(4)
                 frame_size = struct.unpack("!L", data)[0]
                 total_chunks = (frame_size + CHUNK_SIZE - 1) // CHUNK_SIZE
@@ -380,39 +406,26 @@ class ConferenceClient:
 
                 for _ in range(total_chunks):
                     chunk_data, _ = self.sockets["camera"].recvfrom(CHUNK_SIZE + 4)
-                    chunk_index = int.from_bytes(chunk_data[:2], 'big')
-                    total_chunks_received = int.from_bytes(chunk_data[2:4], 'big')
-                
+                    chunk_index = int.from_bytes(chunk_data[:2], "big")
+                    total_chunks_received = int.from_bytes(chunk_data[2:4], "big")
+
                     if total_chunks_received != total_chunks:
                         continue  # 分块数量不一致，丢弃
 
                     buffer[chunk_index] = chunk_data[4:]  # 存储分块数据
-                """buffer = [None] * total_chunks  # 初始化缓存列表
-                packet, _ = self.sockets["camera"].recvfrom(4)
-                nparr = np.frombuffer(packet, dtype=np.uint8)
-                img_decoded = cv2.imdecode(nparr, cv2.IMREAD_COLOR)"""
-                
+
                 if None not in buffer:
-                    frame_data = b''.join(buffer)
+                    frame_data = b"".join(buffer)
                     nparr = np.frombuffer(frame_data, dtype=np.uint8)
                     img_decoded = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-                
+
                     if img_decoded is not None:
-                        cv2.imshow("Meeting", img_decoded)
-                        if cv2.waitKey(1) & 0xFF == ord("q"):
-                            break
+                        video_images["host"] = get_base64_image(img_decoded)
+                        # cv2.imshow("Meeting", img_decoded)
+                        # if cv2.waitKey(1) & 0xFF == ord("q"):
+                        #     break
                 else:
                     print("Failed to decode the image")
-                """if img_decoded is not None:
-                    cv2.imshow("Meeting", img_decoded)
-                    cv2.waitKey(1)  # 保持窗口打开，1 毫秒等待时间
-                else:
-                    print("Failed to decode the image")
-                # black_frame = np.zeros((480, 640, 3), dtype=np.uint8)
-                # cv2.imshow('Meeting', black_frame)
-                if cv2.waitKey(1) & 0xFF == ord("q"):
-                    break"""
-            cv2.destroyAllWindows()
         except Exception as e:
             if self.on_meeting:
                 print(f"[Error]: Failed to receive others video. {e}")
@@ -483,6 +496,11 @@ class ConferenceClient:
 
 
 if __name__ == "__main__":
+    flask_port = get_client_port()
+    flask_thread = threading.Thread(target=start_flask, args=(CLIENT_IP, flask_port))
+    flask_thread.start()
+    save_client_port(flask_port)
+
     print("Please input the server's ip and port, e.g. 127.0.0.1:8888...")
     input_addr = input().split(":")
     input_ip, input_port = input_addr[0], input_addr[1]
