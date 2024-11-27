@@ -8,8 +8,9 @@ import struct
 import pickle
 import time
 
+
 class ConferenceClient:
-    def __init__(self, HOST: str, PORT: str):
+    def __init__(self, HOST: str, PORT: int):
         # sync client
         self.data_types = [
             "screen",
@@ -21,7 +22,7 @@ class ConferenceClient:
         self.is_working = True
         self.HOST = HOST  # server addr
         self.on_meeting = False  # status
-        self.on_camera=False
+        self.on_camera = False
         self.conns = (
             None  # you may need to maintain multiple conns for a single conference
         )
@@ -178,7 +179,7 @@ class ConferenceClient:
             return
         else:
             self.configure_cancelled()
-            self.on_camera=False
+            self.on_camera = False
             self.on_meeting = False
             self.conference_id = -1
 
@@ -231,7 +232,6 @@ class ConferenceClient:
             return
         threading.Thread(target=self.recv_text_messages, daemon=True).start()
         threading.Thread(target=self.recv_video, daemon=True).start()
-        
 
         print(f"[Info]: Conference {self.conference_id} started.")
 
@@ -289,7 +289,7 @@ class ConferenceClient:
         except Exception as e:
             if self.on_meeting:
                 print(f"[Error]: Failed to receive messages. {e}")
-    
+
     def send_video(self):
         if not self.on_meeting:
             print("[Warn]: You must join a conference to share videos!")
@@ -297,26 +297,26 @@ class ConferenceClient:
         if not self.on_camera:
             print("[Warn]: You must open the camera to show your image!")
             return
+
         def video_stream():
             cap = cv2.VideoCapture(0)
-            CHUNK_SIZE=992
+            CHUNK_SIZE = 992
             encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 60]
             try:
                 while cap.isOpened() and self.on_camera:
-                    open,img=cap.read()
+                    open, img = cap.read()
                     if not open:
                         break
                     img_flipped = cv2.flip(img, 1)
-                    result, imgencode = cv2.imencode('.jpg', img_flipped, encode_param)
-                  #  print(len(imgencode))
+                    result, imgencode = cv2.imencode(".jpg", img_flipped, encode_param)
+                    #  print(len(imgencode))
                     frame_data = imgencode.tobytes()  # 转换为字节流
                     total_size = len(frame_data)  # 获取总大小
                     self.sockets["camera"].sendto(
                         frame_data, (self.server_host, self.data_serve_ports["camera"])
-                         )
+                    )
                     time.sleep(0.01)
-                    
-                    
+
                     """
                     frame_data=pickle.dumps(img_flipped)
                     total_size = len(frame_data)  # 获取总大小
@@ -332,18 +332,18 @@ class ConferenceClient:
                         packet, (self.server_host, self.data_serve_ports["camera"])
                          )
                          """
-              
-                # 显示本地视频
-                    cv2.imshow('You', img_flipped)   
-                    if cv2.waitKey(1) & 0xFF == ord('q'):
-                        self.on_camera=False
+
+                    # 显示本地视频
+                    cv2.imshow("You", img_flipped)
+                    if cv2.waitKey(1) & 0xFF == ord("q"):
+                        self.on_camera = False
                         break
             finally:
                 cap.release()
                 cv2.destroyAllWindows()
-                
+
         threading.Thread(target=video_stream, daemon=True).start()
-    
+
     def recv_video(self):
         try:
             while self.on_meeting:
@@ -352,33 +352,28 @@ class ConferenceClient:
                 size = struct.unpack("!L", data)[0]
                 buffer=b''
                 i=0
-                while len(buffer) < size:                  
+                while len(buffer) < size:
                     packet,_=self.sockets["camera"].recvfrom(1024)
                     buffer+=packet
                 print(i)
                 #frame = pickle.loads(buffer)  # 反序列化视频帧
                 """
-                packet,_=self.sockets["camera"].recvfrom(40000)    
+                packet, _ = self.sockets["camera"].recvfrom(40000)
                 nparr = np.frombuffer(packet, dtype=np.uint8)
                 img_decoded = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
                 if img_decoded is not None:
-                    cv2.imshow('Meeting', img_decoded)
+                    cv2.imshow("Meeting", img_decoded)
                     cv2.waitKey(1)  # 保持窗口打开，1 毫秒等待时间
                 else:
                     print("Failed to decode the image")
-                #black_frame = np.zeros((480, 640, 3), dtype=np.uint8)  
-               #cv2.imshow('Meeting', black_frame)
-                if cv2.waitKey(1) & 0xFF == ord('q'):
+                # black_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+                # cv2.imshow('Meeting', black_frame)
+                if cv2.waitKey(1) & 0xFF == ord("q"):
                     break
             cv2.destroyAllWindows()
         except Exception as e:
             if self.on_meeting:
                 print(f"[Error]: Failed to receive others video. {e}")
-        
-        
-
-        
-            
 
     def start(self):
         """
@@ -410,7 +405,7 @@ class ConferenceClient:
                     self.perform_exit()
                 elif cmd_input == "list":
                     self.list_conferences()
-                
+
                 else:
                     recognized = False
             elif len(fields) == 2:
@@ -428,12 +423,12 @@ class ConferenceClient:
                     message = fields[1]
                     self.send_text_message(message)
                 elif fields[0] == "open":
-                    if fields[1]=="camera":
-                        self.on_camera=True
+                    if fields[1] == "camera":
+                        self.on_camera = True
                         self.send_video()
                 elif fields[0] == "close":
-                    if fields[1]=="camera":
-                        self.on_camera=False
+                    if fields[1] == "camera":
+                        self.on_camera = False
                     """else if fields[1]=="Audio":
                         self.recv_video()"""
                 else:
@@ -446,5 +441,9 @@ class ConferenceClient:
 
 
 if __name__ == "__main__":
-    client1 = ConferenceClient(SERVER_IP, get_server_port())
+    print("Please input the server's ip and port, e.g. 127.0.0.1:8888...")
+    input_addr = input().split(":")
+    input_ip, input_port = input_addr[0], input_addr[1]
+    print(f"Connecting to {input_ip}, port is {input_port}")
+    client1 = ConferenceClient(input_ip, int(input_port))
     client1.start()

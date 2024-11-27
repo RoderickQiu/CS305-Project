@@ -36,9 +36,9 @@ class ConferenceServer:
         from_info = str(from_info)
         try:
             while self.running:
-                if data_type!="camera":
+                if data_type != "camera":
                     data, addr = conn_socket.recvfrom(CHUNK)
-                elif data_type=="camera":
+                elif data_type == "camera":
                     data, addr = conn_socket.recvfrom(65535)
                 if not data:
                     break
@@ -55,7 +55,7 @@ class ConferenceServer:
                 if data_type == "camera":
                     # Forward camera data to all other clients
                     self.broadcast_message(data, from_info, data_type)
-                    
+
         except asyncio.CancelledError:
             pass
 
@@ -69,8 +69,6 @@ class ConferenceServer:
                     writer.sendto(message.encode(), addr)
                 elif data_type == "camera":
                     writer.sendto(message, addr)
-
-                
 
     async def log(self):
         while self.running:
@@ -388,4 +386,5 @@ class MainServer:
 
 if __name__ == "__main__":
     server = MainServer(SERVER_IP, sync_server_host())
+    print(f"Server running on {SERVER_IP}:{sync_server_host()}")
     server.start()
