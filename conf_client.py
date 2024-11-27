@@ -398,7 +398,7 @@ class ConferenceClient:
             )
             fields = cmd_input.split(maxsplit=1)
             if len(fields) == 1:
-                if cmd_input in ("?", "？"):
+                if cmd_input in ("?", "？","help"):
                     print(HELP)
                 elif cmd_input == "create":
                     self.create_conference()
