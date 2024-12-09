@@ -27,7 +27,8 @@ class ConferenceServer:
         self.clients_info = []
         self.clients_udp_addrs = {}
         self.client_conns = {}
-        self.mode = "Client-Server"  # or 'P2P' if you want to support peer-to-peer conference mode
+        self.isp2p = False
+        self.p2p_host_info = {}
 
     def handle_data(self, conn_socket, from_info, data_type):
         """
@@ -61,12 +62,14 @@ class ConferenceServer:
 
     def broadcast_message(self, message, from_info, data_type):
         for client_id, socket_list in self.client_conns.items():
-            port = self.data_serve_ports[client_id][data_type]
+            if not data_type == "confe":
+                port = self.data_serve_ports[client_id][data_type]
+            else:
+                port = self.conf_serve_ports[client_id]
             writer: socket.socket = self.client_conns[client_id][port]
             addr = self.clients_udp_addrs[client_id][data_type]
-            if data_type == "text":
+            if data_type == "text" or data_type == "confe":
                 if client_id != from_info:
-
                     writer.sendto(message.encode(), addr)
             elif data_type == "camera":
                 writer.sendto(message, addr)
@@ -109,7 +112,7 @@ class MainServer:
             {}
         )  # self.conference_servers[conference_id] = ConferenceManager
 
-    def handle_create_conference(self, from_info):
+    def handle_create_conference(self, from_info, conference_mode):
         """
         create conference: create and start the corresponding ConferenceServer, and reply necessary info to client
         """
@@ -121,6 +124,8 @@ class MainServer:
             self.conference_count += 1
             new_conference.conf_serve_ports = {}
             new_conference.data_serve_ports = {}
+            new_conference.isp2p = conference_mode == "p2p"
+            new_conference.p2p_host_info = {}
 
             new_conference.start()
             self.conference_servers[new_conference.conference_id] = new_conference
@@ -138,57 +143,111 @@ class MainServer:
             print(f"Conference {conference_id} not found")
             return "Conference not found", 404
 
-        try:
-            print(f"Joining conference {conference_id} ...")
-            self.from_info_to_conference[from_info] = conference_id
-            conference_server: ConferenceServer = self.conference_servers[conference_id]
-            conference_server.clients_info.append(from_info)
+        print(f"Joining conference {conference_id} ...")
+        self.from_info_to_conference[from_info] = conference_id
+        conference_server: ConferenceServer = self.conference_servers[conference_id]
 
+        if conference_server.isp2p and len(conference_server.clients_info) >= 2:
+            return "P2P mode only support two members", 400
+
+        try:
             # build conference port's socket
             use_port = self.conference_port_save
             conference_server.conf_serve_ports[from_info] = use_port
             conference_server.client_conns[from_info] = {}
             conference_server.client_conns[from_info][use_port] = socket.socket(
-                socket.AF_INET, socket.SOCK_STREAM
+                socket.AF_INET, socket.SOCK_DGRAM
             )
             conference_server.client_conns[from_info][use_port].bind(
                 (self.server_ip, use_port)
             )
-            conference_server.client_conns[from_info][use_port].listen(5)
             self.conference_port_save += 1
 
-            # build data ports' socket
-            conference_server.data_serve_ports[from_info] = {}
-            for data_type in conference_server.data_types:
-                use_port = self.conference_port_save
-                conference_server.data_serve_ports[from_info][data_type] = use_port
-                conference_server.client_conns[from_info][use_port] = socket.socket(
-                    socket.AF_INET, socket.SOCK_DGRAM
-                )
-                conference_server.client_conns[from_info][use_port].bind(
-                    (self.server_ip, use_port)
-                )
-                self.conference_port_save += 1
+            if not conference_server.isp2p:
+                conference_server.clients_info.append(from_info)
 
-            save_server_port(self.conference_port_save)
+                # build data ports' socket
+                conference_server.data_serve_ports[from_info] = {}
+                for data_type in conference_server.data_types:
+                    use_port = self.conference_port_save
+                    conference_server.data_serve_ports[from_info][data_type] = use_port
+                    conference_server.client_conns[from_info][use_port] = socket.socket(
+                        socket.AF_INET, socket.SOCK_DGRAM
+                    )
+                    conference_server.client_conns[from_info][use_port].bind(
+                        (self.server_ip, use_port)
+                    )
+                    self.conference_port_save += 1
 
-            print(f"Client {from_info} join conference {conference_id}")
-            return (
-                json.dumps(
-                    {
-                        "host": self.server_ip,
-                        "conference_id": conference_id,
-                        "conf_serve_port": conference_server.conf_serve_ports[
-                            from_info
-                        ],
-                        "data_serve_ports": conference_server.data_serve_ports[
-                            from_info
-                        ],
-                        "data_types": conference_server.data_types,
-                    }
-                ),
-                200,
-            )
+                save_server_port(self.conference_port_save)
+
+                print(
+                    f"Client {from_info} join conference {conference_id}, server mode"
+                )
+                return (
+                    json.dumps(
+                        {
+                            "isp2p": "False",
+                            "host": self.server_ip,
+                            "conference_id": conference_id,
+                            "conf_serve_port": conference_server.conf_serve_ports[
+                                from_info
+                            ],
+                            "data_serve_ports": conference_server.data_serve_ports[
+                                from_info
+                            ],
+                            "member_id": -1,
+                            "data_types": conference_server.data_types,
+                        }
+                    ),
+                    200,
+                )
+            else:  # is p2p
+                conference_server.clients_info.append(from_info)
+                if len(conference_server.clients_info) == 1:  # first member
+                    print(
+                        f"Client {from_info} join conference {conference_id}, first member in p2p mode"
+                    )
+                    return (
+                        json.dumps(
+                            {
+                                "isp2p": "True",
+                                "conference_id": conference_id,
+                                "conf_serve_port": conference_server.conf_serve_ports[
+                                    from_info
+                                ],
+                                "member_id": 0,
+                                "data_types": conference_server.data_types,
+                            }
+                        ),
+                        200,
+                    )
+                else:  # second member, should establish connection
+                    print(
+                        f"Client {from_info} join conference {conference_id}, second member in p2p mode"
+                    )
+                    data_ports = {}
+                    for item in conference_server.p2p_host_info["0"]["ports"]:
+                        data_ports[item] = conference_server.p2p_host_info["0"][
+                            "ports"
+                        ][item][1]
+
+                    return (
+                        json.dumps(
+                            {
+                                "isp2p": "True",
+                                "conference_id": conference_id,
+                                "conf_serve_port": conference_server.conf_serve_ports[
+                                    from_info
+                                ],
+                                "host": conference_server.p2p_host_info["0"]["ip"],
+                                "data_serve_ports": data_ports,
+                                "member_id": 1,
+                                "data_types": conference_server.data_types,
+                            }
+                        ),
+                        200,
+                    )
         except Exception as e:
             print(f"Error in joining conference: {e}")
             traceback.print_exc()
@@ -213,6 +272,7 @@ class MainServer:
 
             conference_server.conf_serve_ports.pop(from_info)
             self.from_info_to_conference.pop(from_info)
+            conference_server.clients_info.remove(from_info)
             conference_server.data_serve_ports.pop(from_info)
             del conference_server.client_conns[from_info]
 
@@ -243,6 +303,7 @@ class MainServer:
             return "Start data stream successfully", 200
         except Exception as e:
             print(f"Error in starting data stream: {e}")
+            traceback.print_exc()
             return "Error in starting data stream", 500
 
     def handle_client_exit(self, from_info, current_client):
@@ -264,6 +325,8 @@ class MainServer:
                         del self.from_info_to_conference[from_info]
                     if from_info in conference_server.client_conns:
                         del conference_server.client_conns[from_info]
+                    if from_info in conference_server.clients_info:
+                        conference_server.clients_info.remove(from_info)
 
             current_client.close()
             self.conference_conns.remove(current_client)
@@ -286,7 +349,7 @@ class MainServer:
             if conference_server.host_info != from_info and not forced:
                 return "Only the manager can cancel the conference", 403
 
-            conference_server.broadcast_message(CANCEL_MSG, from_info, "text")
+            conference_server.broadcast_message(CANCEL_MSG, from_info, "confe")
             conference_server.cancel_conference()
             self.conference_ids.remove(conference_id)
             self.conference_servers.pop(conference_id)
@@ -316,10 +379,72 @@ class MainServer:
                 status_code = 400
 
                 if action == "create":
-                    conference_id, status_code = self.handle_create_conference(
-                        from_info
-                    )
-                    response = str(conference_id)
+                    conference_mode = request[1]
+                    if conference_mode not in ["server", "p2p"]:
+                        response = "Invalid conference mode"
+                        status_code = 400
+                    else:
+                        conference_id, status_code = self.handle_create_conference(
+                            from_info, conference_mode
+                        )
+                        response = str(conference_id)
+
+                elif action == "p2p":
+                    action_mode = request[1]
+                    if action_mode == "info":
+                        try:
+                            conference_id = int(request[2])
+                            member_id = str(request[3])
+                            client_ip, client_ports = request[4], ast.literal_eval(
+                                request[5]
+                            )
+                            conference_server: ConferenceServer = (
+                                self.conference_servers[conference_id]
+                            )
+                            conference_server.p2p_host_info[member_id] = {}
+                            conference_server.p2p_host_info[member_id][
+                                "from-info"
+                            ] = from_info
+                            conference_server.p2p_host_info[member_id]["ip"] = client_ip
+                            conference_server.p2p_host_info[member_id][
+                                "ports"
+                            ] = client_ports
+
+                            # if it is the second, then it should remind the first
+                            if member_id == "1":
+                                client_id = conference_server.p2p_host_info["0"][
+                                    "from-info"
+                                ]
+                                port = conference_server.conf_serve_ports[client_id]
+                                writer: socket.socket = conference_server.client_conns[
+                                    client_id
+                                ][port]
+                                addr = conference_server.p2p_host_info["0"]["ports"][
+                                    "confe"
+                                ]
+
+                                data_ports = {}
+                                for item in conference_server.p2p_host_info["1"][
+                                    "ports"
+                                ]:
+                                    data_ports[item] = conference_server.p2p_host_info[
+                                        "1"
+                                    ]["ports"][item][1]
+                                if client_id != from_info:
+                                    establish_msg = (
+                                        f"{P2P_ESTAB_MSG} {conference_server.p2p_host_info['1']['ip']} "
+                                        f"{str(data_ports).replace(' ', '')}"
+                                    )
+                                    writer.sendto(establish_msg.encode(), addr)
+
+                            response, status_code = "P2P info updated", 200
+                        except Exception as e:
+                            response = f"Error in updating P2P info: {e}"
+                            traceback.print_exc()
+                            status_code = 500
+                    else:
+                        response = "Invalid P2P action"
+                        status_code = 400
 
                 elif action == "join":
                     conference_id = int(request[1])
@@ -328,7 +453,14 @@ class MainServer:
                     )
 
                 elif action == "list":
-                    response = json.dumps(self.conference_ids)
+                    response = ""
+                    for conf_id in self.conference_ids:
+                        if self.conference_servers[conf_id].isp2p:
+                            response += f"{conf_id} (p2p), "
+                        else:
+                            response += f"{conf_id}, "
+                    if len(response) > 2:
+                        response = response[:-2]
                     status_code = 200
 
                 elif action == "quit":

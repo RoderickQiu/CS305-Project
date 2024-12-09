@@ -1,9 +1,9 @@
 import json
 
 HELP = (
-    "Create         : create an conference\n"
+    "Create [mode]  : create an conference, mode can be 'server' or 'p2p'\n"
     "List           : list all available conferences\n"
-    "Join [conf_id ]: join a conference with conference ID\n"
+    "Join [conf_id] : join a conference with conference ID\n"
     "Quit           : quit an on-going conference\n"
     "Cancel         : cancel your on-going conference (only the manager)\n"
     "Send [message] : send a text message to all participants\n"
@@ -15,9 +15,10 @@ HELP = (
     "Close Mic      : close microphone\n"
 )
 CANCEL_MSG = "The conference has been canceled by the manager"
+P2P_ESTAB_MSG = "P2P Established"
 
 SERVER_IP = "10.27.107.219"
-CLIENT_IP = "10.32.52.104"
+CLIENT_IP = "10.27.107.219"
 TIMEOUT_SERVER = 5
 DGRAM_SIZE = 1500  # UDP
 LOG_INTERVAL = 2

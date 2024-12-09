@@ -1,4 +1,6 @@
+import ast
 import os
+import traceback
 import urllib
 from util import *
 import socket
@@ -87,6 +89,8 @@ class ConferenceClient:
         )
         self.support_data_types = []  # for some types of data
         self.share_data = {}
+        self.isp2p = False
+        self.p2p_no_peer = True
 
         self.conference_info = (
             None  # you may need to save and update some conference_info regularly
@@ -102,11 +106,11 @@ class ConferenceClient:
         self.sockets["main"].connect((HOST, PORT))
 
     def create_sockets(self):
-        self.sockets["confe"] = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sockets["confe"] = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         for data_type in self.data_types:
             self.sockets[data_type] = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-    def create_conference(self):
+    def create_conference(self, mode):
         """
         create a conference: send create-conference request to server and obtain necessary data to
         """
@@ -114,7 +118,7 @@ class ConferenceClient:
         recv_lines = []
         conference_id = -1
         self.create_sockets()
-        msg = "create"
+        msg = f"create {mode}"
         self.sockets["main"].sendall(msg.encode())
         self.recv_data = self.sockets["main"].recv(CHUNK).decode()
         self.output_data(self.sockets["main"])
@@ -153,17 +157,57 @@ class ConferenceClient:
         self.conference_id = conference_id
 
         recv_dict: Dict[str] = json.loads(recv_lines[0])
-        self.sockets["confe"].connect((self.HOST, recv_dict["conf_serve_port"]))
-        self.data_serve_ports = recv_dict["data_serve_ports"]
-        self.server_host = recv_dict["host"]
+
         self.udp_addr_count = get_client_port()
+        self.sockets["confe"].bind((self.CLIENT_IP, self.udp_addr_count))
+        self.udp_addrs["confe"] = (self.CLIENT_IP, self.udp_addr_count)
+        self.udp_addr_count += 1
+
         for data_type in self.data_types:
             self.sockets[data_type].bind((self.CLIENT_IP, self.udp_addr_count))
             self.udp_addrs[data_type] = (self.CLIENT_IP, self.udp_addr_count)
             self.udp_addr_count += 1
 
         save_client_port(self.udp_addr_count)
-        self.start_conference(conference_id)
+        threading.Thread(target=self.recv_commands, daemon=True).start()
+
+        if (
+            recv_dict["isp2p"] == "False" or recv_dict["member_id"] == 1
+        ):  # server or second member
+            self.data_serve_ports = recv_dict["data_serve_ports"]
+            self.server_host = recv_dict["host"]
+
+            if recv_dict["member_id"] == 1:
+                self.isp2p = True
+                self.p2p_no_peer = False
+                msg = f"p2p info {self.conference_id} 1 {self.CLIENT_IP} {str(self.udp_addrs).replace(' ', '')}"
+                self.sockets["main"].sendall(msg.encode())
+                self.recv_data = self.sockets["main"].recv(CHUNK).decode()
+                self.output_data(self.sockets["main"])
+
+                recv_lines = self.recv_data.splitlines()
+                if not recv_lines[-1] == "200":
+                    print(f"[Error]: An error occurs, please input again!")
+                    return
+
+                threading.Thread(target=self.recv_text_messages, daemon=True).start()
+                threading.Thread(target=self.recv_video, daemon=True).start()
+
+                print(f"[Info]: Conference {self.conference_id} started.")
+            else:
+                self.start_conference(conference_id)
+        elif recv_dict["member_id"] == 0:  # is first member
+            self.isp2p = True
+            self.p2p_no_peer = True
+            msg = f"p2p info {self.conference_id} 0 {self.CLIENT_IP} {str(self.udp_addrs).replace(' ', '')}"
+            self.sockets["main"].sendall(msg.encode())
+            self.recv_data = self.sockets["main"].recv(CHUNK).decode()
+            self.output_data(self.sockets["main"])
+
+            recv_lines = self.recv_data.splitlines()
+            if not recv_lines[-1] == "200":
+                print(f"[Error]: An error occurs, please input again!")
+                return
 
     def quit_conference(self):
         """
@@ -229,43 +273,25 @@ class ConferenceClient:
             return
 
         msg = f"cancel"
+        self.on_meeting = False
         self.sockets["main"].sendall(msg.encode())
         self.recv_data = self.sockets["main"].recv(CHUNK).decode()
         self.output_data(self.sockets["main"])
 
         recv_lines = self.recv_data.splitlines()
         if recv_lines[-1] == "403":
-            print(f"[Error]: Only the manager can cancel the conference.")
+            print(f"[Warn]: Only the manager can cancel the conference.")
+            self.on_meeting = True
             return
         elif not recv_lines[-1] == "200":
             print(f"[Error]: An error occurs, please input again!")
+            self.on_meeting = True
             return
         else:
             self.configure_cancelled()
             self.on_camera = False
             self.on_meeting = False
             self.conference_id = -1
-
-    def keep_share(
-        self, data_type, send_conn, capture_function, compress=None, fps_or_frequency=30
-    ):
-        """
-        running task: keep sharing (capture and send) certain type of data from server or clients (P2P)
-        you can create different functions for sharing various kinds of data
-        """
-        pass
-
-    def share_switch(self, data_type):
-        """
-        switch for sharing certain type of data (screen, camera, audio, etc.)
-        """
-        pass
-
-    def keep_recv(self, recv_conn, data_type, decompress=None):
-        """
-        running task: keep receiving certain type of data (save or output)
-        you can create other functions for receiving various kinds of data
-        """
 
     def output_data(self, socket: socket.socket):
         """
@@ -324,6 +350,10 @@ class ConferenceClient:
             print("[Warn]: You must join a conference to send messages.")
             return
 
+        if self.p2p_no_peer and self.isp2p:
+            print("[Warn]: No peer yet in p2p mode.")
+            return
+
         try:
             msg = f"text: {message}"
             self.sockets["text"].sendto(
@@ -335,6 +365,7 @@ class ConferenceClient:
         except Exception as e:
             if self.on_meeting:
                 print(f"[Error]: Failed to send message. {e}")
+                traceback.print_exc()
 
     def recv_text_messages(self):
         """
@@ -344,13 +375,47 @@ class ConferenceClient:
             while self.on_meeting:
                 data = self.sockets["text"].recv(CHUNK).decode()  # Blocking receive
                 if data:
-                    if CANCEL_MSG in data:  # Check if the conference has been cancelled
-                        print(f"[Info]: {CANCEL_MSG}")
-                        self.configure_cancelled()
-                        break
                     print(f"[Message]: {data}")
         except Exception as e:
             if self.on_meeting:
+                traceback.print_exc()
+                print(f"[Error]: Failed to receive messages. {e}")
+
+    def recv_commands(self):
+        """
+        Continuously receive commands from the server.
+        """
+        try:
+            while self.on_meeting:
+                data = self.sockets["confe"].recv(CHUNK).decode()  # Blocking receive
+                if data:
+                    if CANCEL_MSG in data:  # Check if the conference has been cancelled
+                        print(f"[Info]: {CANCEL_MSG}")
+                        self.on_meeting = False
+                        self.configure_cancelled()
+                        break
+                    elif (
+                        P2P_ESTAB_MSG in data
+                    ):  # The first p2p host establish conn with the second
+                        self.p2p_no_peer = False
+                        split_data = data.split(" ")
+                        print(
+                            f"[Info]: P2P established with {split_data[2]}"
+                        )  # "P2P Established {ip} {ports}"
+                        self.server_host = split_data[2]
+                        self.data_serve_ports = ast.literal_eval(split_data[3])
+
+                        threading.Thread(
+                            target=self.recv_text_messages, daemon=True
+                        ).start()
+                        threading.Thread(target=self.recv_video, daemon=True).start()
+
+                        print(f"[Info]: Conference {self.conference_id} started.")
+                    else:
+                        print(f"[Message]: {data}")
+        except Exception as e:
+            if self.on_meeting:
+                traceback.print_exc()
                 print(f"[Error]: Failed to receive messages. {e}")
 
     def send_video(self):
@@ -359,6 +424,9 @@ class ConferenceClient:
             return
         if not self.on_camera:
             print("[Warn]: You must open the camera to show your image!")
+            return
+        if self.p2p_no_peer and self.isp2p:
+            print("[Warn]: No peer yet in p2p mode.")
             return
 
         def video_stream():
@@ -457,7 +525,7 @@ class ConferenceClient:
 
             recognized = True
             cmd_input = (
-                input(f'({status}) Please enter a operation (enter "?" to help): ')
+                input(f"({status}) Please enter a operation (enter '?' to help): ")
                 .strip()
                 .lower()
             )
@@ -465,8 +533,6 @@ class ConferenceClient:
             if len(fields) == 1:
                 if cmd_input in ("?", "？", "help"):
                     print(HELP)
-                elif cmd_input == "create":
-                    self.create_conference()
                 elif cmd_input == "quit":
                     self.quit_conference()
                 elif cmd_input == "cancel":
@@ -485,10 +551,12 @@ class ConferenceClient:
                         self.join_conference(int(input_conf_id))
                     else:
                         print("[Warn]: Input conference ID must be in digital form")
-                elif fields[0] == "switch":
-                    data_type = fields[1]
-                    if data_type in self.share_data.keys():
-                        self.share_switch(data_type)
+                elif fields[0] == "create":
+                    mode = fields[1]
+                    if mode in ("server", "p2p"):
+                        self.create_conference(mode)
+                    else:
+                        print("[Warn]: Mode must be 'server' or 'p2p'")
                 elif fields[0] == "send":
                     message = fields[1]
                     self.send_text_message(message)
