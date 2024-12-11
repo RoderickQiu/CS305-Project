@@ -487,7 +487,9 @@ class ConferenceClient:
             cap = cv2.VideoCapture(0)
             CHUNK_SIZE = 1024
             encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 60]
+            
             try:
+                
                 while cap.isOpened() and self.on_camera:
                     open, img = cap.read()
                     if not open:
@@ -496,16 +498,17 @@ class ConferenceClient:
                     img_flipped = cv2.flip(img_resized, 1)
 
                     result, imgencode = cv2.imencode(".jpg", img_flipped, encode_param)
+                    id_num = self.id.to_bytes(4, byteorder="big")
+                
                     frame_data = imgencode.tobytes()
                     total_size = len(frame_data)  # 获取总大小
-                    id_num = self.id.to_bytes(4, byteorder="big")
+                    combined_data = id_num + frame_data
+                    
                     self.sockets["camera"].sendto(
-                        id_num, (self.server_host, self.data_serve_ports["camera"])
+                        combined_data, (self.server_host, self.data_serve_ports["camera"])
                     )
                     time.sleep(0.01)
-                    self.sockets["camera"].sendto(
-                        frame_data, (self.server_host, self.data_serve_ports["camera"])
-                    )
+
                     """time.sleep(0.01)
                     
                     # 转换为 4 字节大端序
@@ -540,9 +543,9 @@ class ConferenceClient:
         try:
             CHUNK_SIZE = 1024  # 分块大小
             while self.on_meeting:
-                id, _ = self.sockets["camera"].recvfrom(4)
-                id_num = int.from_bytes(id, byteorder="big")  # 大端序解包
                 packet, _ = self.sockets["camera"].recvfrom(60000)
+                id_num = int.from_bytes(packet[:4], byteorder="big")
+                frame_data = packet[4:]
                 nparr = np.frombuffer(packet, dtype=np.uint8)
                 if nparr is not None:
                     video_images[str(id_num)] = get_base64_image(nparr)
