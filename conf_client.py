@@ -630,12 +630,14 @@ class ConferenceClient:
                         self.on_camera = True
                         self.send_video()
                     elif fields[1] == "audio":
+                        self.sockets["main"].sendall("open audio".encode())
                         self.on_audio = True
                         self.send_audio()
                 elif fields[0] == "close":
                     if fields[1] == "camera":
                         self.on_camera = False
                     elif fields[1] == "audio":
+                        self.sockets["main"].sendall("close audio".encode())
                         self.on_audio = False
                 else:
                     recognized = False

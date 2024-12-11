@@ -34,17 +34,21 @@ class ConferenceServer:
         self.client_conns = {}
         self.isp2p = False
         self.p2p_host_info = {}
+        self.on_audio = {}
 
     def handle_audio(self):
         while self.running:
             all_data = []
             for client_id, socket_list in self.client_conns.items():
-
+                if not self.on_audio[client_id]:
+                    continue
                 port = self.data_serve_ports[client_id]["audio"]
                 conn_socket: socket.socket = self.client_conns[client_id][port]
                 data, addr = conn_socket.recvfrom(65535)
                 all_data.append(data)
 
+            if len(all_data) == 0:
+                continue
             over_data = overlay_audio(*all_data)
             self.broadcast_message(over_data, "", "audio")
 
@@ -171,6 +175,7 @@ class MainServer:
         print(f"Joining conference {conference_id} ...")
         self.from_info_to_conference[from_info] = conference_id
         conference_server: ConferenceServer = self.conference_servers[conference_id]
+        conference_server.on_audio[from_info] = False
 
         if conference_server.isp2p and len(conference_server.clients_info) >= 2:
             return "P2P mode only support two members", 400
@@ -389,6 +394,18 @@ class MainServer:
             traceback.print_exc()
             return "Error in cancelling conference", 500
 
+    def handle_open_audio(self, from_info):
+        conf_id = self.from_info_to_conference[from_info]
+        conference_server: ConferenceServer = self.conference_servers[conf_id]
+        conference_server.on_audio[from_info] = True
+        return "Successfully open audio", 400
+
+    def handle_close_audio(self, from_info):
+        conf_id = self.from_info_to_conference[from_info]
+        conference_server: ConferenceServer = self.conference_servers[conf_id]
+        conference_server.on_audio[from_info] = False
+        return "Successfully close audio", 400
+
     def request_handler(self, client_socket: socket.socket, from_info):
         """
         running task: handle out-meeting (or also in-meeting) requests from clients
@@ -508,6 +525,11 @@ class MainServer:
                         from_info, conference_id, udp_info
                     )
 
+                elif message == "open audio":
+                    response, status_code = self.handle_open_audio(from_info)
+
+                elif message == "close audio":
+                    response, status_code = self.handle_close_audio(from_info)
                 print(response + "\n" + str(status_code))
                 client_socket.sendall((response + "\n" + str(status_code)).encode())
             except Exception as e:
