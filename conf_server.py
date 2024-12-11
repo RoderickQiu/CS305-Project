@@ -141,7 +141,7 @@ class MainServer:
             {}
         )  # self.conference_servers[conference_id] = ConferenceManager
 
-    def handle_create_conference(self, from_info, conference_mode):
+    def handle_create_conference(self, from_info, conference_mode, extra_options):
         """
         create conference: create and start the corresponding ConferenceServer, and reply necessary info to client
         """
@@ -159,6 +159,15 @@ class MainServer:
             new_conference.start()
             self.conference_servers[new_conference.conference_id] = new_conference
             print(f"Create conference, id {new_conference.conference_id}")
+
+            if "should_recreate" in extra_options:
+                self.handle_cancel_conference(
+                    from_info,
+                    forced=True,
+                    should_recreate=True,
+                    new_conf_id=new_conference.conference_id,
+                )
+
             return new_conference.conference_id, 200
         except Exception as e:
             print(f"Error in creating conference: {e}")
@@ -178,7 +187,17 @@ class MainServer:
         conference_server.on_audio[from_info] = False
 
         if conference_server.isp2p and len(conference_server.clients_info) >= 2:
-            return "P2P mode only support two members", 400
+            print(f"Conference change to use server mode, switching...")
+            return (
+                json.dumps(
+                    {
+                        "should_recreate": "True",
+                        "host": self.server_ip,
+                        "conference_id": conference_id,
+                    }
+                ),
+                200,
+            )
 
         try:
             # build conference port's socket
@@ -217,6 +236,7 @@ class MainServer:
                 return (
                     json.dumps(
                         {
+                            "should_recreate": "False",
                             "isp2p": "False",
                             "host": self.server_ip,
                             "conference_id": conference_id,
@@ -241,6 +261,7 @@ class MainServer:
                     return (
                         json.dumps(
                             {
+                                "should_recreate": "False",
                                 "isp2p": "True",
                                 "conference_id": conference_id,
                                 "conf_serve_port": conference_server.conf_serve_ports[
@@ -265,6 +286,7 @@ class MainServer:
                     return (
                         json.dumps(
                             {
+                                "should_recreate": "False",
                                 "isp2p": "True",
                                 "conference_id": conference_id,
                                 "conf_serve_port": conference_server.conf_serve_ports[
@@ -294,7 +316,7 @@ class MainServer:
             if (
                 len(conference_server.client_conns.items()) == 1
             ):  # is the only client in the conference, so can shut down the conference
-                self.handle_cancel_conference(from_info, True)
+                self.handle_cancel_conference(from_info, forced=True)
                 print(
                     f"Client {from_info} quit and shut down conference {conference_id}"
                 )
@@ -371,7 +393,9 @@ class MainServer:
             traceback.print_exc()
             return "Error in handling client exit", 500
 
-    def handle_cancel_conference(self, from_info, forced=False):
+    def handle_cancel_conference(
+        self, from_info, forced=False, should_recreate=False, new_conf_id=-1
+    ):
         """
         cancel conference (in-meeting request, a ConferenceServer should be closed by the MainServer)
         """
@@ -382,7 +406,12 @@ class MainServer:
             if conference_server.host_info != from_info and not forced:
                 return "Only the manager can cancel the conference", 403
 
-            conference_server.broadcast_message(CANCEL_MSG, from_info, "confe")
+            if should_recreate:
+                conference_server.broadcast_message(
+                    f"{SHOULD_RECREATE_MSG} {new_conf_id}", from_info, "confe"
+                )
+            else:
+                conference_server.broadcast_message(CANCEL_MSG, from_info, "confe")
             conference_server.cancel_conference()
             self.conference_ids.remove(conference_id)
             self.conference_servers.pop(conference_id)
@@ -425,12 +454,14 @@ class MainServer:
 
                 if action == "create":
                     conference_mode = request[1]
+                    extra_options = ast.literal_eval(request[2])
+                    print(f"Extra options: {request[2]}")
                     if conference_mode not in ["server", "p2p"]:
                         response = "Invalid conference mode"
                         status_code = 400
                     else:
                         conference_id, status_code = self.handle_create_conference(
-                            from_info, conference_mode
+                            from_info, conference_mode, extra_options
                         )
                         response = str(conference_id)
 
@@ -454,6 +485,9 @@ class MainServer:
                             conference_server.p2p_host_info[member_id][
                                 "ports"
                             ] = client_ports
+                            conference_server.clients_udp_addrs[from_info] = (
+                                client_ports
+                            )
 
                             # if it is the second, then it should remind the first
                             if member_id == "1":

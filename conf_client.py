@@ -118,15 +118,17 @@ class ConferenceClient:
         for data_type in self.data_types:
             self.sockets[data_type] = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-    def create_conference(self, mode):
+    def create_conference(self, mode, extra_options=None):
         """
         create a conference: send create-conference request to server and obtain necessary data to
         """
+        if extra_options is None:
+            extra_options = {}
         print("[Info]: Creating a conference")
         recv_lines = []
         conference_id = -1
         self.create_sockets()
-        msg = f"create {mode}"
+        msg = f"create {mode} {json.dumps(extra_options).replace(' ','')}"
         self.sockets["main"].sendall(msg.encode())
         self.recv_data = self.sockets["main"].recv(CHUNK).decode()
         self.output_data(self.sockets["main"])
@@ -161,10 +163,22 @@ class ConferenceClient:
             print(f"[Error]: An error occurs, please input again!")
             return
 
+        recv_dict: Dict[str] = json.loads(recv_lines[0])
+
+        if "should_recreate" in recv_dict:
+            if recv_dict["should_recreate"] == "True":
+                print(f"Conference change to use server mode, switching...")
+                self.create_conference(
+                    "server",
+                    {
+                        "should_recreate": "True",
+                        "conference_id": recv_dict["conference_id"],
+                    },
+                )
+                return
+
         self.on_meeting = True
         self.conference_id = conference_id
-
-        recv_dict: Dict[str] = json.loads(recv_lines[0])
 
         self.udp_addr_count = get_client_port()
         self.sockets["confe"].bind((self.CLIENT_IP, self.udp_addr_count))
@@ -240,7 +254,7 @@ class ConferenceClient:
 
         self.configure_cancelled()
 
-    def configure_cancelled(self):
+    def configure_cancelled(self, new_conf_id=-1):
         try:
             self.sockets["confe"].close()
             for data_type in self.data_types:
@@ -252,6 +266,9 @@ class ConferenceClient:
 
             self.on_meeting = False
             self.conference_id = -1
+
+            if new_conf_id > -1:  # join the newly recreated conf in server mode
+                self.join_conference(new_conf_id)
         except:
             return
 
@@ -399,16 +416,21 @@ class ConferenceClient:
             while self.on_meeting:
                 data = self.sockets["confe"].recv(CHUNK).decode()  # Blocking receive
                 if data:
-                    if CANCEL_MSG in data:  # Check if the conference has been cancelled
-                        print(f"[Info]: {CANCEL_MSG}")
+                    split_data = data.split(" ")
+                    if (
+                        CANCEL_MSG in data or SHOULD_RECREATE_MSG in data
+                    ):  # Check if the conference has been cancelled
+                        print(
+                            f"[Info]: {CANCEL_MSG if CANCEL_MSG in data else SHOULD_RECREATE_MSG}"
+                        )
+                        new_conf_id = int(split_data[-1])
                         self.on_meeting = False
-                        self.configure_cancelled()
+                        self.configure_cancelled(new_conf_id=new_conf_id)
                         break
                     elif (
                         P2P_ESTAB_MSG in data
                     ):  # The first p2p host establish conn with the second
                         self.p2p_no_peer = False
-                        split_data = data.split(" ")
                         print(
                             f"[Info]: P2P established with {split_data[2]}"
                         )  # "P2P Established {ip} {ports}"
@@ -452,16 +474,19 @@ class ConferenceClient:
                     self.sockets["audio"].sendto(
                         data, (self.server_host, self.data_serve_ports["audio"])
                     )  # 发送数据给服务器
-                
+
                 time.sleep(0.01)
 
         threading.Thread(target=audio_stream, daemon=True).start()
 
     def recv_audio(self):
         while self.on_meeting:
-            data = self.sockets["audio"].recv(65535)
-            print("接受到audio")
-            streamout.write(data)
+            try:
+                data = self.sockets["audio"].recv(65535)
+                print("接受到audio")
+                streamout.write(data)
+            except:
+                print("[Warn] Empty audio")
 
     def send_video(self):
         if not self.on_meeting:
@@ -595,9 +620,13 @@ class ConferenceClient:
                 .lower()
             )
             fields = cmd_input.split(maxsplit=1)
-            if len(fields) == 1:
+            if len(fields) == 0:
+                print("[Warn] You must input something. Aborting...")
+            elif len(fields) == 1:
                 if cmd_input in ("?", "？", "help"):
                     print(HELP)
+                elif cmd_input == "create":
+                    self.create_conference("p2p")  # p2p as the default mode
                 elif cmd_input == "quit":
                     self.quit_conference()
                 elif cmd_input == "cancel":
