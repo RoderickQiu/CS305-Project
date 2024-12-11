@@ -452,8 +452,8 @@ class ConferenceClient:
                     self.sockets["audio"].sendto(
                         data, (self.server_host, self.data_serve_ports["audio"])
                     )  # 发送数据给服务器
-
-                # time.sleep(0.01)
+                
+                time.sleep(0.01)
 
         threading.Thread(target=audio_stream, daemon=True).start()
 

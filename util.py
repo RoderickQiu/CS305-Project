@@ -168,3 +168,23 @@ def get_base64_image(opencv_img):
     base64_str = base64.b64encode(opencv_img).decode("utf-8")
     base64_image = f"data:image/jpeg;base64,{base64_str}"
     return base64_image
+
+def overlay_audio(*audio_data):
+    # 将音频数据转换为 numpy 数组（假设音频格式是 int16）
+        audio_arrays = [np.frombuffer(data, dtype=np.int16) for data in audio_data]
+
+        # 获取最大音频长度
+        max_length = max(len(arr) for arr in audio_arrays)
+
+        # 补齐音频数组
+        for i in range(len(audio_arrays)):
+            if len(audio_arrays[i]) < max_length:
+                audio_arrays[i] = np.pad(audio_arrays[i], (0, max_length - len(audio_arrays[i])), 'constant')
+
+        # 将音频数组按帧逐个叠加
+        combined_audio = np.zeros(max_length, dtype=np.int16)
+        for arr in audio_arrays:
+            combined_audio += arr
+
+        # 将叠加后的音频数据转换为字节
+        return combined_audio.tobytes()

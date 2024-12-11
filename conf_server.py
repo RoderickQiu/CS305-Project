@@ -8,11 +8,10 @@ from util import *
 import socket
 
 p = pyaudio.PyAudio()
-stream = p.open(format=pyaudio.paInt16,
-                channels=2,
-                rate=44100,
-                output=True,
-                frames_per_buffer=512)
+stream = p.open(
+    format=pyaudio.paInt16, channels=2, rate=44100, output=True, frames_per_buffer=512
+)
+
 
 class ConferenceServer:
     def __init__(
@@ -36,6 +35,19 @@ class ConferenceServer:
         self.isp2p = False
         self.p2p_host_info = {}
 
+    def handle_audio(self):
+        while self.running:
+            all_data = []
+            for client_id, socket_list in self.client_conns.items():
+
+                port = self.data_serve_ports[client_id]["audio"]
+                conn_socket: socket.socket = self.client_conns[client_id][port]
+                data, addr = conn_socket.recvfrom(65535)
+                all_data.append(data)
+
+            over_data = overlay_audio(*all_data)
+            self.broadcast_message(over_data, "", "audio")
+
     def handle_data(self, conn_socket, from_info, data_type):
         """
         running task: receive sharing stream data from a client and decide how to forward them to the rest clients
@@ -45,8 +57,8 @@ class ConferenceServer:
             while self.running:
                 if data_type == "camera":
                     data, addr = conn_socket.recvfrom(65535)
-                elif data_type == "audio":
-                    data, addr = conn_socket.recvfrom(65535)
+                # elif data_type == "audio":
+                #     data, addr = conn_socket.recvfrom(65535)
                 elif data_type != "camera":
                     data, addr = conn_socket.recvfrom(CHUNK)
                 if not data:
@@ -64,9 +76,9 @@ class ConferenceServer:
                 if data_type == "camera":
                     # Forward camera data to all other clients
                     self.broadcast_message(data, from_info, data_type)
-                
-                if data_type == "audio":
-                    self.broadcast_message(data, from_info, data_type)
+
+                # if data_type == "audio":
+                #     self.broadcast_message(data, from_info, data_type)
 
         except asyncio.CancelledError:
             pass
@@ -302,7 +314,10 @@ class MainServer:
         try:
             conf_server: ConferenceServer = self.conference_servers[conference_id]
             conf_server.clients_udp_addrs[from_info] = udp_info
+            threading.Thread(target=conf_server.handle_audio).start()
             for data_type in conf_server.data_serve_ports[from_info]:
+                if data_type == "audio":
+                    continue
                 data_port = conf_server.data_serve_ports[from_info][data_type]
                 data_thread = threading.Thread(
                     target=conf_server.handle_data,
