@@ -14,6 +14,7 @@ from flask import Flask
 from werkzeug.serving import make_server
 import logging
 import random
+import pyaudio
 
 # 生成一个8位的随机数字
 # flask server thread
@@ -22,6 +23,21 @@ werkzeug_logger = logging.getLogger("werkzeug")
 werkzeug_logger.setLevel(logging.ERROR)
 video_images = dict()
 
+# 初始化 PyAudio
+p = pyaudio.PyAudio()
+# print("可用音频设备列表：")
+# for i in range(p.get_device_count()):
+#     info = p.get_device_info_by_index(i)
+#     print(f"设备索引: {i}, 名称: {info['name']}")
+
+
+#     # 打印目标设备的采样率
+#     print("\n目标设备信息:")
+#     print(f"名称: {info['name']}")
+#     print(f"最大输入通道数: {info['maxInputChannels']}")
+#     print(f"默认采样率: {info['defaultSampleRate']} Hz")
+
+# # p.terminate()
 
 def get_video_view_link(flask_url):
     file_path = "video.html"
@@ -84,6 +100,7 @@ class ConferenceClient:
         self.PORT = PORT  # main server port
         self.on_meeting = False  # status
         self.on_camera = False
+        self.on_audio = False
         self.conns = (
             None  # you may need to maintain multiple conns for a single conference
         )
@@ -192,6 +209,7 @@ class ConferenceClient:
 
                 threading.Thread(target=self.recv_text_messages, daemon=True).start()
                 threading.Thread(target=self.recv_video, daemon=True).start()
+                threading.Thread(target=self.recv_audio, daemon=True).start()
 
                 print(f"[Info]: Conference {self.conference_id} started.")
             else:
@@ -321,6 +339,7 @@ class ConferenceClient:
             return
         threading.Thread(target=self.recv_text_messages, daemon=True).start()
         threading.Thread(target=self.recv_video, daemon=True).start()
+        threading.Thread(target=self.recv_audio, daemon=True).start()
 
         print(f"[Info]: Conference {self.conference_id} started.")
 
@@ -409,6 +428,7 @@ class ConferenceClient:
                             target=self.recv_text_messages, daemon=True
                         ).start()
                         threading.Thread(target=self.recv_video, daemon=True).start()
+                        threading.Thread(target=self.recv_audio, daemon=True).start()
 
                         print(f"[Info]: Conference {self.conference_id} started.")
                     else:
@@ -417,6 +437,40 @@ class ConferenceClient:
             if self.on_meeting:
                 traceback.print_exc()
                 print(f"[Error]: Failed to receive messages. {e}")
+
+    def send_audio(self):
+        if not self.on_meeting:
+            print("[Warn]: You must join a conference to share audios!")
+            return
+
+        def audio_stream():
+            MAX_SIZE = 65535
+            while self.on_audio:
+                data = streamin.read(1024)  # 从麦克风获取音频数据
+                print("收集完毕")
+                if len(data) > MAX_SIZE:
+                    print("数据过大，进行分块发送...")
+                    chunks = [
+                        data[i : i + MAX_SIZE] for i in range(0, len(data), MAX_SIZE)
+                    ]
+                    for chunk in chunks:
+                        self.sockets["audio"].sendto(
+                            chunk, (self.server_host, self.data_serve_ports["audio"])
+                        )
+                else:
+                    self.sockets["audio"].sendto(
+                        data, (self.server_host, self.data_serve_ports["audio"])
+                    )  # 发送数据给服务器
+
+                # time.sleep(0.01)
+
+        threading.Thread(target=audio_stream, daemon=True).start()
+
+    def recv_audio(self):
+        while self.on_meeting:
+            data = self.sockets["audio"].recv(65535)
+            print("接受到audio")
+            streamout.write(data)
 
     def send_video(self):
         if not self.on_meeting:
@@ -481,7 +535,7 @@ class ConferenceClient:
             while self.on_meeting:
                 id, _ = self.sockets["camera"].recvfrom(4)
                 id_num = int.from_bytes(id, byteorder="big")  # 大端序解包
-                print(id_num)
+                # print(id_num)
                 data, _ = self.sockets["camera"].recvfrom(4)
                 frame_size = struct.unpack("!L", data)[0]
                 total_chunks = (frame_size + CHUNK_SIZE - 1) // CHUNK_SIZE
@@ -564,11 +618,14 @@ class ConferenceClient:
                     if fields[1] == "camera":
                         self.on_camera = True
                         self.send_video()
+                    elif fields[1] == "audio":
+                        self.on_audio = True
+                        self.send_audio()
                 elif fields[0] == "close":
                     if fields[1] == "camera":
                         self.on_camera = False
-                    """else if fields[1]=="Audio":
-                        self.recv_video()"""
+                    elif fields[1] == "audio":
+                        self.on_audio = False
                 else:
                     recognized = False
             else:

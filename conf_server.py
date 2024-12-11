@@ -7,6 +7,12 @@ import traceback
 from util import *
 import socket
 
+p = pyaudio.PyAudio()
+stream = p.open(format=pyaudio.paInt16,
+                channels=2,
+                rate=44100,
+                output=True,
+                frames_per_buffer=512)
 
 class ConferenceServer:
     def __init__(
@@ -37,10 +43,12 @@ class ConferenceServer:
         from_info = str(from_info)
         try:
             while self.running:
-                if data_type != "camera":
-                    data, addr = conn_socket.recvfrom(CHUNK)
-                elif data_type == "camera":
+                if data_type == "camera":
                     data, addr = conn_socket.recvfrom(65535)
+                elif data_type == "audio":
+                    data, addr = conn_socket.recvfrom(65535)
+                elif data_type != "camera":
+                    data, addr = conn_socket.recvfrom(CHUNK)
                 if not data:
                     break
                 if data_type == "text":
@@ -55,6 +63,9 @@ class ConferenceServer:
                     self.broadcast_message(formatted_message, from_info, data_type)
                 if data_type == "camera":
                     # Forward camera data to all other clients
+                    self.broadcast_message(data, from_info, data_type)
+                
+                if data_type == "audio":
                     self.broadcast_message(data, from_info, data_type)
 
         except asyncio.CancelledError:
@@ -72,6 +83,8 @@ class ConferenceServer:
                 if client_id != from_info:
                     writer.sendto(message.encode(), addr)
             elif data_type == "camera":
+                writer.sendto(message, addr)
+            elif data_type == "audio":
                 writer.sendto(message, addr)
 
     async def log(self):
