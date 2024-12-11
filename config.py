@@ -17,8 +17,9 @@ HELP = (
 CANCEL_MSG = "The conference has been canceled by the manager"
 P2P_ESTAB_MSG = "P2P Established"
 
-SERVER_IP = "10.12.178.100"
-CLIENT_IP = "10.12.178.100"
+
+SERVER_IP =  "10.27.46.111"
+CLIENT_IP = "10.27.46.111"
 TIMEOUT_SERVER = 5
 DGRAM_SIZE = 1500  # UDP
 LOG_INTERVAL = 2

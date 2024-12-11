@@ -498,6 +498,11 @@ class ConferenceClient:
                     result, imgencode = cv2.imencode(".jpg", img_flipped, encode_param)
                     frame_data = imgencode.tobytes()
                     total_size = len(frame_data)  # 获取总大小
+                #    print(total_size)
+                    self.sockets["camera"].sendto(
+                        frame_data, (self.server_host, self.data_serve_ports["camera"])
+                    )
+                    """time.sleep(0.01)
                     id_num = self.id.to_bytes(4, byteorder="big")
                     # 转换为 4 字节大端序
                     self.sockets["camera"].sendto(
@@ -523,7 +528,7 @@ class ConferenceClient:
                             chunk_data,
                             (self.server_host, self.data_serve_ports["camera"]),
                         )
-                        time.sleep(0.007)
+                        time.sleep(0.007)"""
             finally:
                 cap.release()
 
@@ -533,7 +538,14 @@ class ConferenceClient:
         try:
             CHUNK_SIZE = 1024  # 分块大小
             while self.on_meeting:
-                id, _ = self.sockets["camera"].recvfrom(4)
+                #id, _ = self.sockets["camera"].recvfrom(4)
+                packet, _ = self.sockets["camera"].recvfrom(60000)
+                nparr = np.frombuffer(packet, dtype=np.uint8)
+                if nparr is not None:
+                    video_images[str(self.id)] = get_base64_image(nparr)
+               
+                
+                """
                 id_num = int.from_bytes(id, byteorder="big")  # 大端序解包
                 # print(id_num)
                 data, _ = self.sockets["camera"].recvfrom(4)
@@ -562,7 +574,8 @@ class ConferenceClient:
                         # if cv2.waitKey(1) & 0xFF == ord("q"):
                         #     break
                 else:
-                    print("Failed to decode the image")
+                    print("Failed to decode the image")"""
+                    
         except Exception as e:
             if self.on_meeting:
                 print(f"[Error]: Failed to receive others video. {e}")
