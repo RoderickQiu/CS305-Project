@@ -22,22 +22,11 @@ app = Flask(__name__)
 werkzeug_logger = logging.getLogger("werkzeug")
 werkzeug_logger.setLevel(logging.ERROR)
 video_images = dict()
+last_receive_time = dict()
 
 # 初始化 PyAudio
 p = pyaudio.PyAudio()
-# print("可用音频设备列表：")
-# for i in range(p.get_device_count()):
-#     info = p.get_device_info_by_index(i)
-#     print(f"设备索引: {i}, 名称: {info['name']}")
 
-
-#     # 打印目标设备的采样率
-#     print("\n目标设备信息:")
-#     print(f"名称: {info['name']}")
-#     print(f"最大输入通道数: {info['maxInputChannels']}")
-#     print(f"默认采样率: {info['defaultSampleRate']} Hz")
-
-# # p.terminate()
 
 def get_video_view_link(flask_url):
     file_path = "video.html"
@@ -50,9 +39,11 @@ def get_video_view_link(flask_url):
 
 @app.route("/")
 def print_videos():
-    result = ""
-    for img in video_images:
-        result += str(img) + '<img src="' + str(video_images[img]) + '"/>\n'
+    result = '<style>.grid-container {display: grid;gap: 10px;grid-template-columns: repeat(2, 1fr);}</style><div class="grid-container">'
+    for img_name in video_images:
+        if time.time() - last_receive_time[img_name] <= 1000:
+            result += f'<div class="grid-item"><div>{str(img_name)}</div><div><img src="{str(video_images[img_name])}"/></div></div>'
+    result += "</div>"
     return result
 
 
@@ -487,25 +478,26 @@ class ConferenceClient:
             cap = cv2.VideoCapture(0)
             CHUNK_SIZE = 1024
             encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 60]
-            
+
             try:
-                
+
                 while cap.isOpened() and self.on_camera:
                     open, img = cap.read()
                     if not open:
                         break
-                    img_resized = cv2.resize(img, (640, 480))
+                    img_resized = cv2.resize(img, (480, 320))
                     img_flipped = cv2.flip(img_resized, 1)
 
                     result, imgencode = cv2.imencode(".jpg", img_flipped, encode_param)
                     id_num = self.id.to_bytes(4, byteorder="big")
-                
+
                     frame_data = imgencode.tobytes()
                     total_size = len(frame_data)  # 获取总大小
                     combined_data = id_num + frame_data
-                    
+
                     self.sockets["camera"].sendto(
-                        combined_data, (self.server_host, self.data_serve_ports["camera"])
+                        combined_data,
+                        (self.server_host, self.data_serve_ports["camera"]),
                     )
                     time.sleep(0.01)
 
@@ -546,11 +538,11 @@ class ConferenceClient:
                 packet, _ = self.sockets["camera"].recvfrom(60000)
                 id_num = int.from_bytes(packet[:4], byteorder="big")
                 frame_data = packet[4:]
-                nparr = np.frombuffer(packet, dtype=np.uint8)
+                nparr = np.frombuffer(frame_data, dtype=np.uint8)
                 if nparr is not None:
                     video_images[str(id_num)] = get_base64_image(nparr)
-               
-                
+                    last_receive_time[str(id_num)] = time.time()
+
                 """
                
                 # print(id_num)
@@ -581,7 +573,7 @@ class ConferenceClient:
                         #     break
                 else:
                     print("Failed to decode the image")"""
-                    
+
         except Exception as e:
             if self.on_meeting:
                 print(f"[Error]: Failed to receive others video. {e}")

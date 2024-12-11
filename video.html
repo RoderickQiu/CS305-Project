@@ -17,7 +17,9 @@
                 iframe.src = iframe.src;
             }
 
-            setInterval(refreshIframe, 80);
+            setTimeout(function () {
+                setInterval(refreshIframe, 80);
+            }, 500);
         }
     </script>
 </head>
