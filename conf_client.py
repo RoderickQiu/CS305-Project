@@ -498,16 +498,18 @@ class ConferenceClient:
                     result, imgencode = cv2.imencode(".jpg", img_flipped, encode_param)
                     frame_data = imgencode.tobytes()
                     total_size = len(frame_data)  # 获取总大小
-                #    print(total_size)
+                    id_num = self.id.to_bytes(4, byteorder="big")
+                    self.sockets["camera"].sendto(
+                        id_num, (self.server_host, self.data_serve_ports["camera"])
+                    )
+                    time.sleep(0.01)
                     self.sockets["camera"].sendto(
                         frame_data, (self.server_host, self.data_serve_ports["camera"])
                     )
                     """time.sleep(0.01)
-                    id_num = self.id.to_bytes(4, byteorder="big")
+                    
                     # 转换为 4 字节大端序
-                    self.sockets["camera"].sendto(
-                        id_num, (self.server_host, self.data_serve_ports["camera"])
-                    )
+                    
                     self.sockets["camera"].sendto(
                         struct.pack("!L", total_size),
                         (self.server_host, self.data_serve_ports["camera"]),
@@ -538,15 +540,16 @@ class ConferenceClient:
         try:
             CHUNK_SIZE = 1024  # 分块大小
             while self.on_meeting:
-                #id, _ = self.sockets["camera"].recvfrom(4)
+                id, _ = self.sockets["camera"].recvfrom(4)
+                id_num = int.from_bytes(id, byteorder="big")  # 大端序解包
                 packet, _ = self.sockets["camera"].recvfrom(60000)
                 nparr = np.frombuffer(packet, dtype=np.uint8)
                 if nparr is not None:
-                    video_images[str(self.id)] = get_base64_image(nparr)
+                    video_images[str(id_num)] = get_base64_image(nparr)
                
                 
                 """
-                id_num = int.from_bytes(id, byteorder="big")  # 大端序解包
+               
                 # print(id_num)
                 data, _ = self.sockets["camera"].recvfrom(4)
                 frame_size = struct.unpack("!L", data)[0]
