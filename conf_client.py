@@ -448,9 +448,13 @@ class ConferenceClient:
                         print(
                             f"[Info]: {CANCEL_MSG if CANCEL_MSG in data else SHOULD_RECREATE_MSG}"
                         )
-                        new_conf_id = int(split_data[-1])
-                        self.on_meeting = False
-                        self.configure_cancelled(new_conf_id=new_conf_id)
+                        if (split_data is None) or len(split_data)==0:
+                            self.on_meeting = False
+                            self.configure_cancelled()
+                        else:
+                            new_conf_id = int(split_data[-1])
+                            self.on_meeting = False
+                            self.configure_cancelled(new_conf_id=new_conf_id)
                         break
                     elif (
                         P2P_ESTAB_MSG in data
