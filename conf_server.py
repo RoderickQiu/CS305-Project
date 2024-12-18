@@ -35,6 +35,7 @@ class ConferenceServer:
         self.isp2p = False
         self.p2p_host_info = {}
         self.on_audio = {}
+        self.on_video = {}
 
     def handle_audio(self):
         while self.running:
@@ -186,6 +187,7 @@ class MainServer:
         self.from_info_to_conference[from_info] = conference_id
         conference_server: ConferenceServer = self.conference_servers[conference_id]
         conference_server.on_audio[from_info] = False
+        conference_server.on_video[from_info] = False
 
         if conference_server.isp2p and len(conference_server.clients_info) >= 2:
             print(f"Conference change to use server mode, switching...")
@@ -429,13 +431,13 @@ class MainServer:
         conf_id = self.from_info_to_conference[from_info]
         conference_server: ConferenceServer = self.conference_servers[conf_id]
         conference_server.on_audio[from_info] = True
-        return "Successfully open audio", 400
+        return "Successfully open audio", 200
 
     def handle_close_audio(self, from_info):
         conf_id = self.from_info_to_conference[from_info]
         conference_server: ConferenceServer = self.conference_servers[conf_id]
         conference_server.on_audio[from_info] = False
-        return "Successfully close audio", 400
+        return "Successfully close audio", 200
 
     def request_handler(self, client_socket: socket.socket, from_info):
         """
