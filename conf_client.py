@@ -127,6 +127,11 @@ class ConferenceClient:
         """
         if extra_options is None:
             extra_options = {}
+
+        if self.on_meeting:
+            print("[Warn]: Already in a conference")
+            return
+
         print("[Info]: Creating a conference")
         recv_lines = []
         conference_id = -1
