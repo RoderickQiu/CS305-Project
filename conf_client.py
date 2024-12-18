@@ -689,6 +689,8 @@ class ConferenceClient:
                         self.on_camera = False
                     elif fields[1] == "audio":
                         self.sockets["main"].sendall("close audio".encode())
+                        msg=self.sockets["main"].recv(CHUNK).decode().splitlines()[0]
+                        print(f"[Info]:{msg}")
                         self.on_audio = False
                 else:
                     recognized = False
