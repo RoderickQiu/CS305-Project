@@ -540,7 +540,6 @@ class ConferenceClient:
 
         def video_stream():
             self.cap = cv2.VideoCapture(0)
-            CHUNK_SIZE = 1024
             encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 60]
 
             try:
@@ -569,40 +568,21 @@ class ConferenceClient:
                     id_num = self.id.to_bytes(4, byteorder="big")
 
                     frame_data = imgencode.tobytes()
-                    total_size = len(frame_data)  # 获取总大小
                     combined_data = id_num + frame_data
 
                     self.sockets["camera"].sendto(
                         combined_data,
                         (self.server_host, self.data_serve_ports["camera"]),
                     )
-                    time.sleep(0.01)
 
-                    """time.sleep(0.01)
-                    
-                    # 转换为 4 字节大端序
-                    
-                    self.sockets["camera"].sendto(
-                        struct.pack("!L", total_size),
-                        (self.server_host, self.data_serve_ports["camera"]),
-                    )
-                    total_chunks = (total_size + CHUNK_SIZE - 1) // CHUNK_SIZE
-                    for i in range(total_chunks):
-                        start = i * CHUNK_SIZE
-                        end = start + CHUNK_SIZE
-                        chunk_data = (
-                            i.to_bytes(2, "big")  # 分块索引（2字节）
-                            + total_chunks.to_bytes(2, "big")  # 总分块数（2字节）
-                            + frame_data[
-                                i * CHUNK_SIZE : (i + 1) * CHUNK_SIZE
-                            ]  # 分块内容
-                        )
-                        # 发送数据包
-                        self.sockets["camera"].sendto(
-                            chunk_data,
-                            (self.server_host, self.data_serve_ports["camera"]),
-                        )
-                        time.sleep(0.007)"""
+                    if self.isp2p:  # when in p2p mode, also save the video to local
+                        nparr = np.frombuffer(frame_data, dtype=np.uint8)
+                        id_num = self.id
+                        if nparr is not None:
+                            video_images[str(id_num)] = get_base64_image(nparr)
+                            last_receive_time[str(id_num)] = time.time()
+
+                    time.sleep(0.01)
             except:
                 print("[Warn]: Empty video")
             finally:
@@ -612,7 +592,6 @@ class ConferenceClient:
 
     def recv_video(self):
         try:
-            CHUNK_SIZE = 1024  # 分块大小
             while self.on_meeting:
                 packet, _ = self.sockets["camera"].recvfrom(60000)
                 id_num = int.from_bytes(packet[:4], byteorder="big")
@@ -621,37 +600,6 @@ class ConferenceClient:
                 if nparr is not None:
                     video_images[str(id_num)] = get_base64_image(nparr)
                     last_receive_time[str(id_num)] = time.time()
-
-                """
-               
-                # print(id_num)
-                data, _ = self.sockets["camera"].recvfrom(4)
-                frame_size = struct.unpack("!L", data)[0]
-                total_chunks = (frame_size + CHUNK_SIZE - 1) // CHUNK_SIZE
-                buffer = [None] * total_chunks  # 初始化缓存列表
-
-                for _ in range(total_chunks):
-                    chunk_data, _ = self.sockets["camera"].recvfrom(CHUNK_SIZE + 4)
-                    chunk_index = int.from_bytes(chunk_data[:2], "big")
-                    total_chunks_received = int.from_bytes(chunk_data[2:4], "big")
-
-                    if total_chunks_received != total_chunks:
-                        continue  # 分块数量不一致，丢弃
-
-                    buffer[chunk_index] = chunk_data[4:]  # 存储分块数据
-
-                if None not in buffer:
-                    frame_data = b"".join(buffer)
-                    nparr = np.frombuffer(frame_data, dtype=np.uint8)
-                    # img_decoded = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-
-                    if nparr is not None:
-                        video_images[str(id_num)] = get_base64_image(nparr)
-                        # cv2.imshow("Meeting", img_decoded)
-                        # if cv2.waitKey(1) & 0xFF == ord("q"):
-                        #     break
-                else:
-                    print("Failed to decode the image")"""
 
         except Exception as e:
             if self.on_meeting:
