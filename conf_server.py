@@ -93,18 +93,36 @@ class ConferenceServer:
             if not client_id in self.client_conns:
                 continue
             if not data_type == "confe":
-                port = self.data_serve_ports[client_id][data_type]
+                try:
+                    port = self.data_serve_ports[client_id][data_type]
+                except:
+                    print()
             else:
-                port = self.conf_serve_ports[client_id]
-            writer: socket.socket = self.client_conns[client_id][port]
-            addr = self.clients_udp_addrs[client_id][data_type]
-            if data_type == "text" or data_type == "confe":
-                if client_id != from_info:
-                    writer.sendto(message.encode(), addr)
-            elif data_type == "camera":
-                writer.sendto(message, addr)
-            elif data_type == "audio":
-                writer.sendto(message, addr)
+                try:
+                    port = self.conf_serve_ports[client_id]
+                except:
+                    print()
+            try:
+                writer: socket.socket = self.client_conns[client_id][port]
+                addr = self.clients_udp_addrs[client_id][data_type]
+                if data_type == "text" or data_type == "confe":
+                    if client_id != from_info:
+                        try:
+                            writer.sendto(message.encode(), addr)
+                        except:
+                            print()
+                elif data_type == "camera":
+                    try:
+                        writer.sendto(message, addr)
+                    except:
+                        print()
+                elif data_type == "audio":
+                    try:
+                        writer.sendto(message, addr)
+                    except:
+                        print()
+            except:
+                print()
 
     async def log(self):
         while self.running:

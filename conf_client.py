@@ -331,7 +331,7 @@ class ConferenceClient:
         self.output_data(self.sockets["main"])
 
         recv_lines = self.recv_data.splitlines()
-        if recv_lines is None or len(recv_lines)==0:
+        if recv_lines is None or len(recv_lines) == 0:
             print(f"[Warn]:  Only the manager can cancel the conference")
             self.on_meeting = True
             return
@@ -453,13 +453,17 @@ class ConferenceClient:
                         print(
                             f"[Info]: {CANCEL_MSG if CANCEL_MSG in data else SHOULD_RECREATE_MSG}"
                         )
-                        if (split_data is None) or len(split_data)==0:
+                        if (split_data is None) or len(split_data) == 0:
                             self.on_meeting = False
                             self.configure_cancelled()
                         else:
-                            new_conf_id = int(split_data[-1])
-                            self.on_meeting = False
-                            self.configure_cancelled(new_conf_id=new_conf_id)
+                            try:
+                                new_conf_id = int(split_data[-1])
+                                self.on_meeting = False
+                                self.configure_cancelled(new_conf_id=new_conf_id)
+                            except:
+                                self.on_meeting = False
+                                self.configure_cancelled()
                         break
                     elif (
                         P2P_ESTAB_MSG in data
@@ -599,6 +603,8 @@ class ConferenceClient:
                             (self.server_host, self.data_serve_ports["camera"]),
                         )
                         time.sleep(0.007)"""
+            except:
+                print("[Warn]: Empty video")
             finally:
                 self.cap.release()
 
