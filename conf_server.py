@@ -41,7 +41,7 @@ class ConferenceServer:
         while self.running:
             all_data = []
             for client_id, socket_list in list(self.client_conns.items()):
-                if not client_id in self.on_audio or not self.on_audio[client_id]  :
+                if not client_id in self.client_conns or not self.on_audio[client_id]  :
                     continue
                 port = self.data_serve_ports[client_id]["audio"]
                 conn_socket: socket.socket = self.client_conns[client_id][port]
@@ -89,7 +89,9 @@ class ConferenceServer:
             pass
 
     def broadcast_message(self, message, from_info, data_type):
-        for client_id, socket_list in self.client_conns.items():
+        for client_id, socket_list in list(self.client_conns.items()):
+            if not client_id in self.client_conns:
+                continue
             if not data_type == "confe":
                 port = self.data_serve_ports[client_id][data_type]
             else:
