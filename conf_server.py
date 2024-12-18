@@ -41,7 +41,7 @@ class ConferenceServer:
         while self.running:
             all_data = []
             for client_id, socket_list in list(self.client_conns.items()):
-                if not self.on_audio[client_id] or not client_id in self.on_audio:
+                if not client_id in self.on_audio or not self.on_audio[client_id]  :
                     continue
                 port = self.data_serve_ports[client_id]["audio"]
                 conn_socket: socket.socket = self.client_conns[client_id][port]
