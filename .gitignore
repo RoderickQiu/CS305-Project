@@ -368,3 +368,7 @@ $RECYCLE.BIN/
 # End of https://www.toptal.com/developers/gitignore/api/visualstudiocode,macos,windows,linux,python,jupyternotebooks,pycharm+all
 config.py
 data.json
+.pyenv
+.pvenv/pyvenv.cfg
+.pvenv/Scripts/*
+.pvenv/share/*

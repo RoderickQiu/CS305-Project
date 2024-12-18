@@ -41,7 +41,7 @@ def get_video_view_link(flask_url):
 def print_videos():
     result = '<style>.grid-container {display: grid;gap: 10px;grid-template-columns: repeat(2, 1fr);}</style><div class="grid-container">'
     for img_name in video_images:
-        if time.time() - last_receive_time[img_name] <= 1000:
+        if time.time() - last_receive_time[img_name] <= 1:
             result += f'<div class="grid-item"><div>{str(img_name)}</div><div><img src="{str(video_images[img_name])}"/></div></div>'
     result += "</div>"
     return result
@@ -92,10 +92,12 @@ class ConferenceClient:
         self.on_meeting = False  # status
         self.on_camera = False
         self.on_audio = False
-        self.on_screen=False
+        self.on_screen = False
+        self.was_on_record = [False, False]
         self.conns = (
             None  # you may need to maintain multiple conns for a single conference
         )
+        self.cap = None
         self.support_data_types = []  # for some types of data
         self.share_data = {}
         self.isp2p = False
@@ -143,7 +145,7 @@ class ConferenceClient:
 
         self.join_conference(conference_id)
 
-    def join_conference(self, conference_id: int):
+    def join_conference(self, conference_id: int, just_recreated=False):
         """
         join a conference: send join-conference request with given conference_id, and obtain necessary data to
         """
@@ -181,7 +183,7 @@ class ConferenceClient:
         self.on_meeting = True
         self.conference_id = conference_id
 
-        self.udp_addr_count = get_client_port()
+        self.udp_addr_count = get_client_port() + 10 * random.randint(3, 109)
         self.sockets["confe"].bind((self.CLIENT_IP, self.udp_addr_count))
         self.udp_addrs["confe"] = (self.CLIENT_IP, self.udp_addr_count)
         self.udp_addr_count += 1
@@ -199,6 +201,15 @@ class ConferenceClient:
         ):  # server or second member
             self.data_serve_ports = recv_dict["data_serve_ports"]
             self.server_host = recv_dict["host"]
+
+            if just_recreated:
+                if self.was_on_record[0]:
+                    self.on_camera = True
+                    self.send_video()
+                if self.was_on_record[1]:
+                    self.send_multimedia_signal("open audio")
+                    self.on_audio = True
+                    self.send_audio()
 
             if recv_dict["member_id"] == 1:
                 self.isp2p = True
@@ -259,6 +270,13 @@ class ConferenceClient:
 
     def configure_cancelled(self, new_conf_id=-1):
         try:
+            try:
+                self.on_camera = False
+                if self.cap is not None:
+                    self.cap.release()
+            except:
+                print()
+
             self.sockets["confe"].close()
             for data_type in self.data_types:
                 if self.sockets[data_type] is not None:
@@ -271,7 +289,7 @@ class ConferenceClient:
             self.conference_id = -1
 
             if new_conf_id > -1:  # join the newly recreated conf in server mode
-                self.join_conference(new_conf_id)
+                self.join_conference(new_conf_id, just_recreated=True)
         except:
             return
 
@@ -491,7 +509,6 @@ class ConferenceClient:
                 streamout.write(data)
             except:
                 print("[Warn] Empty audio")
-                
 
     def send_video(self):
         if not self.on_meeting:
@@ -505,31 +522,31 @@ class ConferenceClient:
             return
 
         def video_stream():
-            cap = cv2.VideoCapture(0)
+            self.cap = cv2.VideoCapture(0)
             CHUNK_SIZE = 1024
             encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 60]
 
             try:
-
-                while cap.isOpened() and self.on_camera:
-                    open, img = cap.read()
-                    img_screen=ImageGrab.grab()
+                while self.cap.isOpened() and self.on_camera:
+                    open, img = self.cap.read()
+                    img_screen = ImageGrab.grab()
                     img_np = np.array(img_screen)
                     img_np = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
                     img_flipped = cv2.flip(img, 1)
                     video_height, video_width, _ = img_np.shape
 
-
                     cam_height, cam_width, _ = img_flipped.shape
-                    #480*640 camera 1080*1920
+                    # 480*640 camera 1080*1920
                     x_offset = video_width - cam_width  # 横向偏移
-                    y_offset = 0       
-                    img_np[y_offset:y_offset+cam_height, x_offset:x_offset+cam_width] =img_flipped
-                    
+                    y_offset = 0
+                    img_np[
+                        y_offset : y_offset + cam_height,
+                        x_offset : x_offset + cam_width,
+                    ] = img_flipped
+
                     if not open:
                         break
                     img_resized = cv2.resize(img_np, (480, 320))
-                    
 
                     result, imgencode = cv2.imencode(".jpg", img_resized, encode_param)
                     id_num = self.id.to_bytes(4, byteorder="big")
@@ -570,7 +587,7 @@ class ConferenceClient:
                         )
                         time.sleep(0.007)"""
             finally:
-                cap.release()
+                self.cap.release()
 
         threading.Thread(target=video_stream, daemon=True).start()
 
@@ -620,6 +637,15 @@ class ConferenceClient:
         except Exception as e:
             if self.on_meeting:
                 print(f"[Error]: Failed to receive others video. {e}")
+
+    def send_multimedia_signal(self, word):
+        self.sockets["main"].sendall(word.encode())
+        self.recv_data = self.sockets["main"].recv(CHUNK).decode()
+        self.output_data(self.sockets["main"])
+
+        recv_lines = self.recv_data.splitlines()
+        if not recv_lines[-1] == "200":
+            print(f"[Error]: An error occurs, please input again!")
 
     def start(self):
         """
@@ -675,23 +701,28 @@ class ConferenceClient:
                 elif fields[0] == "open":
                     if fields[1] == "camera":
                         self.on_camera = True
+                        self.was_on_record[0] = True
                         self.send_video()
                     elif fields[1] == "audio":
-                        self.sockets["main"].sendall("open audio".encode())
-                        msg=self.sockets["main"].recv(CHUNK).decode().splitlines()[0]
-                        print(f"[Info]:{msg}")
+                        self.send_multimedia_signal("open audio")
+                        self.was_on_record[1] = True
                         self.on_audio = True
                         self.send_audio()
-                    elif fields[1]=="screen":
-                        self.on_screen=True
+                    elif fields[1] == "screen":
+                        self.on_screen = True
                 elif fields[0] == "close":
                     if fields[1] == "camera":
                         self.on_camera = False
+                        self.was_on_record[0] = False
+                        try:
+                            if self.cap is not None:
+                                self.cap.release()
+                        except:
+                            print()
                     elif fields[1] == "audio":
-                        self.sockets["main"].sendall("close audio".encode())
-                        msg=self.sockets["main"].recv(CHUNK).decode().splitlines()[0]
-                        print(f"[Info]:{msg}")
+                        self.send_multimedia_signal("close audio")
                         self.on_audio = False
+                        self.was_on_record[1] = False
                 else:
                     recognized = False
             else:
