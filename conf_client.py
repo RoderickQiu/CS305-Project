@@ -242,6 +242,7 @@ class ConferenceClient:
             return
 
         self.on_meeting = False
+        self.on_audio = False
 
         msg = f"quit"
         self.sockets["main"].sendall(msg.encode())
@@ -249,6 +250,7 @@ class ConferenceClient:
         self.output_data(self.sockets["main"])
 
         recv_lines = self.recv_data.splitlines()
+        print(f"[info]:{recv_lines}\n!!!!!")
         if not recv_lines[-1] == "200":
             print(f"[Error]: An error occurs, please input again!")
             return
@@ -461,9 +463,9 @@ class ConferenceClient:
             MAX_SIZE = 65535
             while self.on_audio:
                 data = streamin.read(1024)  # 从麦克风获取音频数据
-                print("收集完毕")
+                # print("收集完毕")
                 if len(data) > MAX_SIZE:
-                    print("数据过大，进行分块发送...")
+                    # print("数据过大，进行分块发送...")
                     chunks = [
                         data[i : i + MAX_SIZE] for i in range(0, len(data), MAX_SIZE)
                     ]
@@ -472,9 +474,10 @@ class ConferenceClient:
                             chunk, (self.server_host, self.data_serve_ports["audio"])
                         )
                 else:
-                    self.sockets["audio"].sendto(
-                        data, (self.server_host, self.data_serve_ports["audio"])
-                    )  # 发送数据给服务器
+                    if "audio" in self.sockets:
+                        self.sockets["audio"].sendto(
+                            data, (self.server_host, self.data_serve_ports["audio"])
+                        )  # 发送数据给服务器
 
                 time.sleep(0.01)
 
@@ -484,7 +487,7 @@ class ConferenceClient:
         while self.on_meeting:
             try:
                 data = self.sockets["audio"].recv(65535)
-                print("接受到audio")
+                # print("接受到audio")
                 streamout.write(data)
             except:
                 print("[Warn] Empty audio")
@@ -675,6 +678,8 @@ class ConferenceClient:
                         self.send_video()
                     elif fields[1] == "audio":
                         self.sockets["main"].sendall("open audio".encode())
+                        msg=self.sockets["main"].recv(CHUNK).decode().splitlines()[0]
+                        print(f"[Info]:{msg}")
                         self.on_audio = True
                         self.send_audio()
                     elif fields[1]=="screen":

@@ -39,8 +39,8 @@ class ConferenceServer:
     def handle_audio(self):
         while self.running:
             all_data = []
-            for client_id, socket_list in self.client_conns.items():
-                if not self.on_audio[client_id]:
+            for client_id, socket_list in list(self.client_conns.items()):
+                if not self.on_audio[client_id] or not client_id in self.on_audio:
                     continue
                 port = self.data_serve_ports[client_id]["audio"]
                 conn_socket: socket.socket = self.client_conns[client_id][port]
@@ -117,6 +117,7 @@ class ConferenceServer:
         self.clients_info = []
         self.client_conns = {}
         self.running = False
+        self.on_audio = {}
 
     def start(self):
         """
@@ -326,6 +327,7 @@ class MainServer:
             self.from_info_to_conference.pop(from_info)
             conference_server.clients_info.remove(from_info)
             conference_server.data_serve_ports.pop(from_info)
+            conference_server.on_audio.pop(from_info)
             del conference_server.client_conns[from_info]
 
             print(f"Client {from_info} quit conference {conference_id}")
