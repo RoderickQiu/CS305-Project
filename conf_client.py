@@ -92,6 +92,7 @@ class ConferenceClient:
         self.on_meeting = False  # status
         self.on_camera = False
         self.on_audio = False
+        self.on_screen=False
         self.conns = (
             None  # you may need to maintain multiple conns for a single conference
         )
@@ -487,6 +488,7 @@ class ConferenceClient:
                 streamout.write(data)
             except:
                 print("[Warn] Empty audio")
+                
 
     def send_video(self):
         if not self.on_meeting:
@@ -508,12 +510,25 @@ class ConferenceClient:
 
                 while cap.isOpened() and self.on_camera:
                     open, img = cap.read()
+                    img_screen=ImageGrab.grab()
+                    img_np = np.array(img_screen)
+                    img_np = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
+                    img_flipped = cv2.flip(img, 1)
+                    video_height, video_width, _ = img_np.shape
+
+
+                    cam_height, cam_width, _ = img_flipped.shape
+                    #480*640 camera 1080*1920
+                    x_offset = video_width - cam_width  # 横向偏移
+                    y_offset = 0       
+                    img_np[y_offset:y_offset+cam_height, x_offset:x_offset+cam_width] =img_flipped
+                    
                     if not open:
                         break
-                    img_resized = cv2.resize(img, (480, 320))
-                    img_flipped = cv2.flip(img_resized, 1)
+                    img_resized = cv2.resize(img_np, (480, 320))
+                    
 
-                    result, imgencode = cv2.imencode(".jpg", img_flipped, encode_param)
+                    result, imgencode = cv2.imencode(".jpg", img_resized, encode_param)
                     id_num = self.id.to_bytes(4, byteorder="big")
 
                     frame_data = imgencode.tobytes()
@@ -662,6 +677,8 @@ class ConferenceClient:
                         self.sockets["main"].sendall("open audio".encode())
                         self.on_audio = True
                         self.send_audio()
+                    elif fields[1]=="screen":
+                        self.on_screen=True
                 elif fields[0] == "close":
                     if fields[1] == "camera":
                         self.on_camera = False

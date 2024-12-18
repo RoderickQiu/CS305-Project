@@ -18,8 +18,8 @@ CANCEL_MSG = "The conference has been canceled by the manager"
 SHOULD_RECREATE_MSG = "Recreating the conference via server mode..."
 P2P_ESTAB_MSG = "P2P Established"
 
-SERVER_IP = "10.27.107.219"
-CLIENT_IP = "10.27.107.219"
+SERVER_IP = "10.27.46.111"
+CLIENT_IP = "10.27.46.111"
 TIMEOUT_SERVER = 5
 DGRAM_SIZE = 1500  # UDP
 LOG_INTERVAL = 2
