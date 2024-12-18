@@ -326,6 +326,10 @@ class ConferenceClient:
         self.output_data(self.sockets["main"])
 
         recv_lines = self.recv_data.splitlines()
+        if recv_lines is None or len(recv_lines)==0:
+            print(f"[Warn]:  Only the manager can cancel the conference")
+            self.on_meeting = True
+            return
         if recv_lines[-1] == "403":
             print(f"[Warn]: Only the manager can cancel the conference.")
             self.on_meeting = True
