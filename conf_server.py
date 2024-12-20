@@ -62,6 +62,9 @@ class ConferenceServer:
             while self.running:
                 if data_type == "camera":
                     data, addr = conn_socket.recvfrom(65535)
+                if data_type == "screen":
+                    data, addr = conn_socket.recvfrom(65535)
+                    print("screen")
                 # elif data_type == "audio":
                 #     data, addr = conn_socket.recvfrom(65535)
                 elif data_type != "camera":
@@ -79,6 +82,10 @@ class ConferenceServer:
                     # Forward message to all other clients
                     self.broadcast_message(formatted_message, from_info, data_type)
                 if data_type == "camera":
+                    # Forward camera data to all other clients
+                    self.broadcast_message(data, from_info, data_type)
+                
+                if data_type == "screen":
                     # Forward camera data to all other clients
                     self.broadcast_message(data, from_info, data_type)
 
@@ -119,6 +126,12 @@ class ConferenceServer:
                 elif data_type == "audio":
                     try:
                         writer.sendto(message, addr)
+                    except:
+                        print()
+                elif data_type == "screen":
+                    try:
+                        writer.sendto(message, addr)
+                        print("send screen")
                     except:
                         print()
             except:

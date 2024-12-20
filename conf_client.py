@@ -93,7 +93,7 @@ class ConferenceClient:
         self.on_camera = False
         self.on_audio = False
         self.on_screen = False
-        self.was_on_record = [False, False]
+        self.was_on_record = [False, False,False]
         self.conns = (
             None  # you may need to maintain multiple conns for a single conference
         )
@@ -215,6 +215,9 @@ class ConferenceClient:
                     self.send_multimedia_signal("open audio")
                     self.on_audio = True
                     self.send_audio()
+                if self.was_on_record[2]:
+                    self.on_screen = True
+                    self.screen_video()
 
             if recv_dict["member_id"] == 1:
                 self.isp2p = True
@@ -231,7 +234,7 @@ class ConferenceClient:
 
                 threading.Thread(target=self.recv_text_messages, daemon=True).start()
                 threading.Thread(target=self.recv_video, daemon=True).start()
-                threading.Thread(target=self.recv_audio, daemon=True).start()
+                threading.Thread(target=self.recv_screen, daemon=True).start()
 
                 print(f"[Info]: Conference {self.conference_id} started.")
             else:
@@ -378,6 +381,7 @@ class ConferenceClient:
         threading.Thread(target=self.recv_text_messages, daemon=True).start()
         threading.Thread(target=self.recv_video, daemon=True).start()
         threading.Thread(target=self.recv_audio, daemon=True).start()
+        threading.Thread(target=self.recv_screen, daemon=True).start()
 
         print(f"[Info]: Conference {self.conference_id} started.")
 
@@ -480,6 +484,8 @@ class ConferenceClient:
                         ).start()
                         threading.Thread(target=self.recv_video, daemon=True).start()
                         threading.Thread(target=self.recv_audio, daemon=True).start()
+                        threading.Thread(target=self.recv_audio, daemon=True).start()
+                        threading.Thread(target=self.recv_screen, daemon=True).start()
 
                         print(f"[Info]: Conference {self.conference_id} started.")
                     else:
@@ -544,36 +550,24 @@ class ConferenceClient:
 
             try:
                 while self.cap.isOpened() and self.on_camera:
-                    open, img = self.cap.read()
-                    img_screen = ImageGrab.grab()
-                    img_np = np.array(img_screen)
-                    img_np = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
-                    img_flipped = cv2.flip(img, 1)
-                    video_height, video_width, _ = img_np.shape
-
-                    cam_height, cam_width, _ = img_flipped.shape
-                    # 480*640 camera 1080*1920
-                    x_offset = video_width - cam_width  # 横向偏移
-                    y_offset = 0
-                    img_np[
-                        y_offset : y_offset + cam_height,
-                        x_offset : x_offset + cam_width,
-                    ] = img_flipped
-
+                    open, img = cap.read()
                     if not open:
                         break
-                    img_resized = cv2.resize(img_np, (480, 320))
+                    img_resized = cv2.resize(img, (480, 320))
+                    img_flipped = cv2.flip(img_resized, 1)
 
-                    result, imgencode = cv2.imencode(".jpg", img_resized, encode_param)
+                    result, imgencode = cv2.imencode(".jpg", img_flipped, encode_param)
                     id_num = self.id.to_bytes(4, byteorder="big")
 
                     frame_data = imgencode.tobytes()
+                    total_size = len(frame_data)  # 获取总大小
                     combined_data = id_num + frame_data
 
                     self.sockets["camera"].sendto(
                         combined_data,
                         (self.server_host, self.data_serve_ports["camera"]),
                     )
+                    
 
                     if self.isp2p:  # when in p2p mode, also save the video to local
                         nparr = np.frombuffer(frame_data, dtype=np.uint8)
@@ -595,6 +589,69 @@ class ConferenceClient:
             while self.on_meeting:
                 packet, _ = self.sockets["camera"].recvfrom(60000)
                 id_num = int.from_bytes(packet[:4], byteorder="big")
+                frame_data = packet[4:]
+                print(id_num)
+                nparr = np.frombuffer(frame_data, dtype=np.uint8)
+                if nparr is not None:
+                    video_images[str(id_num)] = get_base64_image(nparr)
+                    last_receive_time[str(id_num)] = time.time()
+
+        except Exception as e:
+            if self.on_meeting:
+                print(f"[Error]: Failed to receive others video. {e}")
+        
+    def screen_video(self):
+        if not self.on_meeting:
+            print("[Warn]: You must join a conference to share videos!")
+            return
+        if not self.on_screen:
+            print("[Warn]: You must open the screem to show your image!")
+            return
+        if self.p2p_no_peer and self.isp2p:
+            print("[Warn]: No peer yet in p2p mode.")
+            return
+
+        def screen_stream():
+            
+            encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 60]
+
+            try:
+                while  self.on_screen:
+                    
+                    img_screen = ImageGrab.grab()
+                    img_np = np.array(img_screen)
+                    img_np = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)         
+                    img_resized = cv2.resize(img_np, (480, 320))
+
+                    result, imgencode = cv2.imencode(".jpg", img_resized, encode_param)
+                    id_num = self.id.to_bytes(4, byteorder="big")
+                    frame_data = imgencode.tobytes()
+                    combined_data = id_num + frame_data
+
+                    self.sockets["screen"].sendto(
+                        combined_data,
+                        (self.server_host, self.data_serve_ports["screen"]),
+                    )
+
+                    if self.isp2p:  # when in p2p mode, also save the video to local
+                        nparr = np.frombuffer(frame_data, dtype=np.uint8)
+                        id_num = self.id
+                        if nparr is not None:
+                            video_images[str(id_num)] = get_base64_image(nparr)
+                            last_receive_time[str(id_num)] = time.time()
+
+                    time.sleep(0.01)
+            except:
+                print("[Warn]: Empty video")
+
+        threading.Thread(target=screen_stream, daemon=True).start()
+    
+    def recv_screen(self):
+        try:
+            while self.on_meeting:
+                packet, _ = self.sockets["screen"].recvfrom(60000)
+                id_num = int.from_bytes(packet[:4], byteorder="big")
+                print(id_num)
                 frame_data = packet[4:]
                 nparr = np.frombuffer(frame_data, dtype=np.uint8)
                 if nparr is not None:
@@ -677,6 +734,8 @@ class ConferenceClient:
                         self.send_audio()
                     elif fields[1] == "screen":
                         self.on_screen = True
+                        self.was_on_record[2] = True
+                        self.screen_video()
                 elif fields[0] == "close":
                     if fields[1] == "camera":
                         self.on_camera = False
@@ -690,6 +749,9 @@ class ConferenceClient:
                         self.send_multimedia_signal("close audio")
                         self.on_audio = False
                         self.was_on_record[1] = False
+                    elif fields[1] == "screen": 
+                        self.on_screen = False
+                        self.was_on_record[2] = False                       
                 else:
                     recognized = False
             else:
