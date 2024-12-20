@@ -36,6 +36,8 @@ def get_video_view_link(flask_url):
     query_params = urllib.parse.urlencode({"url": "http://" + flask_url})
     full_url = f"{file_url}?{query_params}/video"
     print(f"Copy and open {full_url} to see videos")
+
+
 def get_screen_view_link(flask_url):
     file_path = "screen.html"
     absolute_path = os.path.abspath(file_path)
@@ -44,26 +46,32 @@ def get_screen_view_link(flask_url):
     full_url = f"{file_url}?{query_params}"
     print(f"Copy and open {full_url} to see screens")
 
+
 @app.route("/video")
 def print_videos():
     result = '<style>.grid-container {display: grid;gap: 10px;grid-template-columns: repeat(2, 1fr);}</style><div class="grid-container">'
     for img_name in video_images:
         if time.time() - last_receive_time[img_name] <= 1:
-            result += f'<div class="grid-item"><div>{str(img_name)}</div><div><img src="{str(video_images[img_name])}"/></div></div>'
+            result += f'<div class="grid-item"><div>{str(img_name)}</div><div><img src="{str(video_images[img_name])}" width="540px"/></div></div>'
     result += "</div>"
     return result
+
+
 @app.route("/")
 def print_screen():
     result = '<style>.grid-container {display: grid;gap: 10px;grid-template-columns: repeat(2, 1fr);}</style><div class="grid-container">'
     for img_name in screen_images:
         if time.time() - last_receive_time[img_name] <= 1:
-            result += f'<div class="grid-item"><div>{str(img_name)}</div><div><img src="{str(screen_images[img_name])}"/></div></div>'
+            result += f'<div class="grid-item"><div>{str(img_name)}</div><div><img src="{str(screen_images[img_name])}" width="640px"/></div></div>'
     result += "</div>"
     return result
+
+
 def encrypt_decrypt(text: str, key: int) -> str:
-      
-      
-    return ''.join(chr(ord(char) ^ key) for char in text)
+
+    return "".join(chr(ord(char) ^ key) for char in text)
+
+
 class FlaskServer:
     def __init__(self, app, host, port):
         self.host = host
@@ -110,7 +118,7 @@ class ConferenceClient:
         self.on_camera = False
         self.on_audio = False
         self.on_screen = False
-        self.was_on_record = [False, False,False]
+        self.was_on_record = [False, False, False]
         self.conns = (
             None  # you may need to maintain multiple conns for a single conference
         )
@@ -129,6 +137,11 @@ class ConferenceClient:
         self.udp_addrs = {}
         self.server_host = HOST
         self.udp_addr_count = get_client_port()
+
+        self.screen_stack = {}
+        self.screen_stream_cnt = 0
+        self.camera_stack = {}
+        self.camera_stream_cnt = 0
 
         self.sockets["main"] = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sockets["main"].connect((HOST, PORT))
@@ -390,6 +403,11 @@ class ConferenceClient:
         self.recv_data = self.sockets["main"].recv(CHUNK).decode()
         self.output_data(self.sockets["main"])
 
+        self.screen_stack = {}
+        self.screen_stream_cnt = 0
+        self.camera_stack = {}
+        self.camera_stream_cnt = 0
+
         recv_lines = self.recv_data.splitlines()
         if not recv_lines[-1] == "200":
             print(f"[Error]: An error occurs, please input again!")
@@ -424,9 +442,8 @@ class ConferenceClient:
         print(f"[Info]: List of ongoing conferences: {recv_lines[0]}")
 
     def encrypt_decrypt(text: str, key: int) -> str:
-      
-      
-        return ''.join(chr(ord(char) ^ key) for char in text)
+
+        return "".join(chr(ord(char) ^ key) for char in text)
 
     def send_text_message(self, message: str):
         """
@@ -441,11 +458,8 @@ class ConferenceClient:
             return
 
         try:
-            
-            
-            
-            msg=encrypt_decrypt(message,42)
-            
+            msg = encrypt_decrypt(message, 42)
+
             self.sockets["text"].sendto(
                 msg.encode(), (self.server_host, self.data_serve_ports["text"])
             )
@@ -464,9 +478,9 @@ class ConferenceClient:
         try:
             while self.on_meeting:
                 data = self.sockets["text"].recv(CHUNK).decode()  # Blocking receive
-                data=encrypt_decrypt(data,42)
+                data = encrypt_decrypt(data, 42)
                 if data:
-                   print(f"[Message]: {data}")
+                    print(f"[Message]: {data}")
         except Exception as e:
             if self.on_meeting:
                 traceback.print_exc()
@@ -576,28 +590,44 @@ class ConferenceClient:
 
         def video_stream():
             self.cap = cv2.VideoCapture(0)
-            encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 60]
+            encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 65]
 
             try:
                 while self.cap.isOpened() and self.on_camera:
                     open, img = cap.read()
                     if not open:
                         break
-                    img_resized = cv2.resize(img, (480, 320))
+                    img_resized = cv2.resize(img, (540, 320))
                     img_flipped = cv2.flip(img_resized, 1)
 
-                    result, imgencode = cv2.imencode(".jpg", img_flipped, encode_param)
+                    result, imgencode = cv2.imencode(".webp", img_flipped, encode_param)
                     id_num = self.id.to_bytes(4, byteorder="big")
-
                     frame_data = imgencode.tobytes()
-                    total_size = len(frame_data)  # 获取总大小
-                    combined_data = id_num + frame_data
+                    self.camera_stream_cnt += 1
+                    stream_id = self.camera_stream_cnt.to_bytes(24, byteorder="big")
 
-                    self.sockets["camera"].sendto(
-                        combined_data,
-                        (self.server_host, self.data_serve_ports["camera"]),
-                    )
-                    
+                    # cut into 3 pieces
+                    for i in range(3):
+                        try:
+                            identifier = i.to_bytes(2, byteorder="big")
+                            combined_data = (
+                                id_num
+                                + stream_id
+                                + identifier
+                                + frame_data[
+                                    i
+                                    * len(frame_data)
+                                    // 3 : (i + 1)
+                                    * len(frame_data)
+                                    // 3
+                                ]
+                            )
+                            self.sockets["camera"].sendto(
+                                combined_data,
+                                (self.server_host, self.data_serve_ports["camera"]),
+                            )
+                        except:
+                            print(f"[Warn]: Empty video, frame {i}")
 
                     if self.isp2p:  # when in p2p mode, also save the video to local
                         nparr = np.frombuffer(frame_data, dtype=np.uint8)
@@ -617,19 +647,30 @@ class ConferenceClient:
     def recv_video(self):
         try:
             while self.on_meeting:
-                packet, _ = self.sockets["camera"].recvfrom(60000)
+                packet, _ = self.sockets["camera"].recvfrom(65000)
                 id_num = int.from_bytes(packet[:4], byteorder="big")
-                frame_data = packet[4:]
-       
-                nparr = np.frombuffer(frame_data, dtype=np.uint8)
-                if nparr is not None:
-                    video_images[str(id_num)] = get_base64_image(nparr)
-                    last_receive_time[str(id_num)] = time.time()
+                stream_id = int.from_bytes(packet[4:28], byteorder="big")
+                identifier = int.from_bytes(packet[28:30], byteorder="big")
+
+                frame_data = packet[30:]
+
+                if stream_id not in self.camera_stack:
+                    self.camera_stack[stream_id] = {}
+                self.camera_stack[stream_id][identifier] = frame_data
+                if len(self.camera_stack[stream_id]) == 3:
+                    frame_data = b"".join(
+                        [self.camera_stack[stream_id][i] for i in range(3)]
+                    )
+                    nparr = np.frombuffer(frame_data, dtype=np.uint8)
+                    if nparr is not None:
+                        video_images[str(id_num)] = get_base64_image(nparr)
+                        last_receive_time[str(id_num)] = time.time()
 
         except Exception as e:
             if self.on_meeting:
-                print(f"[Error]: Failed to receive others video. {e}")
-        
+                traceback.print_exc()
+                print(f"[Error]: Failed to receive others' video. {e}")
+
     def screen_video(self):
         if not self.on_meeting:
             print("[Warn]: You must join a conference to share videos!")
@@ -642,54 +683,84 @@ class ConferenceClient:
             return
 
         def screen_stream():
-            
-            encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 60]
+            encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 45]
 
             try:
-                while  self.on_screen:
-                    
+                while self.on_screen:
                     img_screen = ImageGrab.grab()
                     img_np = np.array(img_screen)
-                    img_np = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)         
-                    img_resized = cv2.resize(img_np, (480, 320))
+                    img_np = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
+                    img_resized = cv2.resize(img_np, (1440, 960))
 
-                    result, imgencode = cv2.imencode(".jpg", img_resized, encode_param)
+                    result, imgencode = cv2.imencode(".webp", img_resized, encode_param)
                     id_num = self.id.to_bytes(4, byteorder="big")
                     frame_data = imgencode.tobytes()
-                    combined_data = id_num + frame_data
+                    self.screen_stream_cnt += 1
+                    stream_id = self.screen_stream_cnt.to_bytes(24, byteorder="big")
 
-                    self.sockets["screen"].sendto(
-                        combined_data,
-                        (self.server_host, self.data_serve_ports["screen"]),
-                    )
+                    # cut into 4 pieces
+                    for i in range(4):
+                        try:
+                            identifier = i.to_bytes(2, byteorder="big")
+                            combined_data = (
+                                id_num
+                                + stream_id
+                                + identifier
+                                + frame_data[
+                                    i
+                                    * len(frame_data)
+                                    // 4 : (i + 1)
+                                    * len(frame_data)
+                                    // 4
+                                ]
+                            )
+                            self.sockets["screen"].sendto(
+                                combined_data,
+                                (self.server_host, self.data_serve_ports["screen"]),
+                            )
+                        except:
+                            print(f"[Warn]: Empty video, frame {i}")
 
                     if self.isp2p:  # when in p2p mode, also save the video to local
                         nparr = np.frombuffer(frame_data, dtype=np.uint8)
                         id_num = self.id
                         if nparr is not None:
-                            screen_images[str(id_num+1)] = get_base64_image(nparr)
-                            last_receive_time[str(id_num+1)] = time.time()
+                            screen_images[str(id_num + 1)] = get_base64_image(nparr)
+                            last_receive_time[str(id_num + 1)] = time.time()
 
                     time.sleep(0.01)
             except:
+                traceback.print_exc()
                 print("[Warn]: Empty video")
 
         threading.Thread(target=screen_stream, daemon=True).start()
-    
+
     def recv_screen(self):
         try:
             while self.on_meeting:
-                packet, _ = self.sockets["screen"].recvfrom(60000)
+                packet, _ = self.sockets["screen"].recvfrom(65000)
                 id_num = int.from_bytes(packet[:4], byteorder="big")
+                stream_id = int.from_bytes(packet[4:28], byteorder="big")
+                identifier = int.from_bytes(packet[28:30], byteorder="big")
 
-                frame_data = packet[4:]
-                nparr = np.frombuffer(frame_data, dtype=np.uint8)
-                if nparr is not None:
-                    screen_images[str(id_num+1)] = get_base64_image(nparr)
-                    last_receive_time[str(id_num+1)] = time.time()
+                frame_data = packet[30:]
+
+                if stream_id not in self.screen_stack:
+                    self.screen_stack[stream_id] = {}
+                self.screen_stack[stream_id][identifier] = frame_data
+                if len(self.screen_stack[stream_id]) == 4:
+                    frame_data = b"".join(
+                        [self.screen_stack[stream_id][i] for i in range(4)]
+                    )
+                    nparr = np.frombuffer(frame_data, dtype=np.uint8)
+                    if nparr is not None:
+                        screen_images[str(id_num + 1)] = get_base64_image(nparr)
+                        last_receive_time[str(id_num + 1)] = time.time()
+                    del self.screen_stack[stream_id]
 
         except Exception as e:
             if self.on_meeting:
+                traceback.print_exc()
                 print(f"[Error]: Failed to receive others video. {e}")
 
     def send_multimedia_signal(self, word):
@@ -766,6 +837,8 @@ class ConferenceClient:
                         self.on_screen = True
                         self.was_on_record[2] = True
                         self.screen_video()
+                    else:
+                        recognized = False
                 elif fields[0] == "close":
                     if fields[1] == "camera":
                         self.on_camera = False
@@ -779,9 +852,11 @@ class ConferenceClient:
                         self.send_multimedia_signal("close audio")
                         self.on_audio = False
                         self.was_on_record[1] = False
-                    elif fields[1] == "screen": 
+                    elif fields[1] == "screen":
                         self.on_screen = False
-                        self.was_on_record[2] = False                       
+                        self.was_on_record[2] = False
+                    else:
+                        recognized = False
                 else:
                     recognized = False
             else:
