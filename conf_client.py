@@ -34,11 +34,17 @@ def get_video_view_link(flask_url):
     absolute_path = os.path.abspath(file_path)
     file_url = f"file://{absolute_path}"
     query_params = urllib.parse.urlencode({"url": "http://" + flask_url})
-    full_url = f"{file_url}?{query_params}"
+    full_url = f"{file_url}?{query_params}/video"
     print(f"Copy and open {full_url} to see videos")
+def get_screen_view_link(flask_url):
+    file_path = "screen.html"
+    absolute_path = os.path.abspath(file_path)
+    file_url = f"file://{absolute_path}"
+    query_params = urllib.parse.urlencode({"url": "http://" + flask_url})
+    full_url = f"{file_url}?{query_params}"
+    print(f"Copy and open {full_url} to see screens")
 
-
-@app.route("/")
+@app.route("/video")
 def print_videos():
     result = '<style>.grid-container {display: grid;gap: 10px;grid-template-columns: repeat(2, 1fr);}</style><div class="grid-container">'
     for img_name in video_images:
@@ -46,7 +52,14 @@ def print_videos():
             result += f'<div class="grid-item"><div>{str(img_name)}</div><div><img src="{str(video_images[img_name])}"/></div></div>'
     result += "</div>"
     return result
-
+@app.route("/")
+def print_screen():
+    result = '<style>.grid-container {display: grid;gap: 10px;grid-template-columns: repeat(2, 1fr);}</style><div class="grid-container">'
+    for img_name in screen_images:
+        if time.time() - last_receive_time[img_name] <= 1:
+            result += f'<div class="grid-item"><div>{str(img_name)}</div><div><img src="{str(screen_images[img_name])}"/></div></div>'
+    result += "</div>"
+    return result
 def encrypt_decrypt(text: str, key: int) -> str:
       
       
@@ -651,8 +664,8 @@ class ConferenceClient:
                         nparr = np.frombuffer(frame_data, dtype=np.uint8)
                         id_num = self.id
                         if nparr is not None:
-                            video_images[str(id_num)] = get_base64_image(nparr)
-                            last_receive_time[str(id_num)] = time.time()
+                            screen_images[str(id_num+1)] = get_base64_image(nparr)
+                            last_receive_time[str(id_num+1)] = time.time()
 
                     time.sleep(0.01)
             except:
@@ -669,7 +682,7 @@ class ConferenceClient:
                 frame_data = packet[4:]
                 nparr = np.frombuffer(frame_data, dtype=np.uint8)
                 if nparr is not None:
-                    video_images[str(id_num+1)] = get_base64_image(nparr)
+                    screen_images[str(id_num+1)] = get_base64_image(nparr)
                     last_receive_time[str(id_num+1)] = time.time()
 
         except Exception as e:
@@ -780,6 +793,7 @@ if __name__ == "__main__":
     flask_thread = threading.Thread(target=start_flask, args=(CLIENT_IP, flask_port))
     flask_thread.start()
     get_video_view_link(CLIENT_IP + ":" + str(flask_port))
+    get_screen_view_link(CLIENT_IP + ":" + str(flask_port))
     save_client_port(flask_port + 1)
 
     print("Please input the server's ip and port, e.g. 127.0.0.1:8888...")
