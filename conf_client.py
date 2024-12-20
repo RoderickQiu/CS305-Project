@@ -255,6 +255,7 @@ class ConferenceClient:
 
                 print(f"[Info]: Conference {self.conference_id} started.")
             else:
+                self.isp2p = False
                 self.start_conference(conference_id)
         elif recv_dict["member_id"] == 0:  # is first member
             self.isp2p = True
@@ -268,6 +269,8 @@ class ConferenceClient:
             if not recv_lines[-1] == "200":
                 print(f"[Error]: An error occurs, please input again!")
                 return
+        else:
+            self.isp2p = False
 
     def quit_conference(self):
         """
