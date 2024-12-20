@@ -1,0 +1,29 @@
+<html>
+<head>
+    <title>screen</title>
+    <style>
+        iframe {
+            border: none;
+        }
+    </style>
+    <script>
+        window.onload = function () {
+            const urlParams = new URLSearchParams(window.location.search);
+            const url = urlParams.get('url');
+            let iframe = document.getElementById('video-frame');
+            iframe.src = url;
+
+            function refreshIframe() {
+                iframe.src = iframe.src;
+            }
+
+            setTimeout(function () {
+                setInterval(refreshIframe, 80);
+            }, 500);
+        }
+    </script>
+</head>
+<body>
+<iframe id="video-frame" src="about:blank" width="100%" height="100%"></iframe>
+</body>
+</html>

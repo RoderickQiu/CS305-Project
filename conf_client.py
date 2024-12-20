@@ -22,6 +22,7 @@ app = Flask(__name__)
 werkzeug_logger = logging.getLogger("werkzeug")
 werkzeug_logger.setLevel(logging.ERROR)
 video_images = dict()
+screen_images = dict()
 last_receive_time = dict()
 
 # 初始化 PyAudio
@@ -46,7 +47,10 @@ def print_videos():
     result += "</div>"
     return result
 
-
+def encrypt_decrypt(text: str, key: int) -> str:
+      
+      
+    return ''.join(chr(ord(char) ^ key) for char in text)
 class FlaskServer:
     def __init__(self, app, host, port):
         self.host = host
@@ -403,6 +407,11 @@ class ConferenceClient:
 
         print(f"[Info]: List of ongoing conferences: {recv_lines[0]}")
 
+    def encrypt_decrypt(text: str, key: int) -> str:
+      
+      
+        return ''.join(chr(ord(char) ^ key) for char in text)
+
     def send_text_message(self, message: str):
         """
         Send a text message to the server for broadcasting to other clients.
@@ -416,11 +425,15 @@ class ConferenceClient:
             return
 
         try:
-            msg = f"text: {message}"
+            
+            
+            
+            msg=encrypt_decrypt(message,42)
+            
             self.sockets["text"].sendto(
                 msg.encode(), (self.server_host, self.data_serve_ports["text"])
             )
-            print(f"[Info]: Message sent: {message}")
+            print(f"[Info]: Message sent: {msg}")
         except KeyError:
             print(f"[Error]: Text socket is not initialized.")
         except Exception as e:
@@ -435,8 +448,9 @@ class ConferenceClient:
         try:
             while self.on_meeting:
                 data = self.sockets["text"].recv(CHUNK).decode()  # Blocking receive
+                data=encrypt_decrypt(data,42)
                 if data:
-                    print(f"[Message]: {data}")
+                   print(f"[Message]: {data}")
         except Exception as e:
             if self.on_meeting:
                 traceback.print_exc()
@@ -655,8 +669,8 @@ class ConferenceClient:
                 frame_data = packet[4:]
                 nparr = np.frombuffer(frame_data, dtype=np.uint8)
                 if nparr is not None:
-                    video_images[str(id_num)] = get_base64_image(nparr)
-                    last_receive_time[str(id_num)] = time.time()
+                    video_images[str(id_num+1)] = get_base64_image(nparr)
+                    last_receive_time[str(id_num+1)] = time.time()
 
         except Exception as e:
             if self.on_meeting:
