@@ -13,6 +13,8 @@ HELP = (
     "Close Camera:  : close camera\n"
     "Open Audio       : open microphone\n"
     "Close Audio      : close microphone\n"
+    "Open screen       : open screen\n"
+    "Close screen      : close screen\n"
 )
 CANCEL_MSG = "The conference has been canceled by the manager"
 SHOULD_RECREATE_MSG = "Recreating the conference via server mode..."

@@ -64,7 +64,7 @@ class ConferenceServer:
                     data, addr = conn_socket.recvfrom(65535)
                 if data_type == "screen":
                     data, addr = conn_socket.recvfrom(65535)
-                    print("screen")
+           
                 # elif data_type == "audio":
                 #     data, addr = conn_socket.recvfrom(65535)
                 elif data_type != "camera":
@@ -131,7 +131,7 @@ class ConferenceServer:
                 elif data_type == "screen":
                     try:
                         writer.sendto(message, addr)
-                        print("send screen")
+                      
                     except:
                         print()
             except:

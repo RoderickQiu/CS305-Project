@@ -590,7 +590,7 @@ class ConferenceClient:
                 packet, _ = self.sockets["camera"].recvfrom(60000)
                 id_num = int.from_bytes(packet[:4], byteorder="big")
                 frame_data = packet[4:]
-                print(id_num)
+       
                 nparr = np.frombuffer(frame_data, dtype=np.uint8)
                 if nparr is not None:
                     video_images[str(id_num)] = get_base64_image(nparr)
@@ -651,7 +651,7 @@ class ConferenceClient:
             while self.on_meeting:
                 packet, _ = self.sockets["screen"].recvfrom(60000)
                 id_num = int.from_bytes(packet[:4], byteorder="big")
-                print(id_num)
+
                 frame_data = packet[4:]
                 nparr = np.frombuffer(frame_data, dtype=np.uint8)
                 if nparr is not None:
