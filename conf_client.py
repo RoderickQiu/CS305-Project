@@ -596,6 +596,8 @@ class ConferenceClient:
                     traceback.print_exc()
                     print("[Warn]: empty audio")
 
+                time.sleep(0.01)
+
         threading.Thread(target=audio_stream, daemon=True).start()
 
     def recv_audio(self):
