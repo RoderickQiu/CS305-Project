@@ -41,17 +41,26 @@ class ConferenceServer:
         while self.running:
             all_data = []
             for client_id, socket_list in list(self.client_conns.items()):
-                if not client_id in self.client_conns or not self.on_audio[client_id]  :
+                if not client_id in self.client_conns or not self.on_audio[client_id]:
                     continue
                 port = self.data_serve_ports[client_id]["audio"]
-                conn_socket: socket.socket = self.client_conns[client_id][port]
-                data, addr = conn_socket.recvfrom(65535)
-                all_data.append(data)
+                try:
+                    conn_socket: socket.socket = self.client_conns[client_id][port]
+                    data, addr = conn_socket.recvfrom(65535)
+                    all_data.append(data)
+                except:
+                    print("[Warn]: empty audio")
 
             if len(all_data) == 0:
                 continue
-            over_data = overlay_audio(*all_data)
-            self.broadcast_message(over_data, "", "audio")
+            try:
+                over_data = overlay_audio(*all_data)
+            except:
+                print("[Warn]: empty audio")
+            try:
+                self.broadcast_message(over_data, "", "audio")
+            except:
+                print("[Warn]: empty audio")
 
     def handle_data(self, conn_socket, from_info, data_type):
         """
@@ -64,7 +73,7 @@ class ConferenceServer:
                     data, addr = conn_socket.recvfrom(65535)
                 if data_type == "screen":
                     data, addr = conn_socket.recvfrom(65535)
-           
+
                 # elif data_type == "audio":
                 #     data, addr = conn_socket.recvfrom(65535)
                 elif data_type != "camera":
@@ -84,7 +93,7 @@ class ConferenceServer:
                 if data_type == "camera":
                     # Forward camera data to all other clients
                     self.broadcast_message(data, from_info, data_type)
-                
+
                 if data_type == "screen":
                     # Forward camera data to all other clients
                     self.broadcast_message(data, from_info, data_type)
@@ -131,7 +140,7 @@ class ConferenceServer:
                 elif data_type == "screen":
                     try:
                         writer.sendto(message, addr)
-                      
+
                     except:
                         print()
             except:
