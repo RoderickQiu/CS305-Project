@@ -68,8 +68,20 @@ def print_screen():
 
 
 def encrypt_decrypt(text: str, key: int) -> str:
-
-    return "".join(chr(ord(char) ^ key) for char in text)
+    """
+    使用 XOR 算法对文本进行加密或解密，
+    并确保结果在可打印的 ASCII 范围内（32-126）。
+    :param text: 原始文本
+    :param key: 密钥（整数）
+    :return: 加密或解密后的文本
+    """
+    result = []
+    for char in text:
+        xor_result = ord(char) ^ key  # 计算 XOR
+        # 将结果调整到 ASCII 可打印字符范围（32-126）
+        adjusted_result = 32 + (xor_result % 95)
+        result.append(chr(adjusted_result))
+    return ''.join(result)
 
 
 class FlaskServer:
