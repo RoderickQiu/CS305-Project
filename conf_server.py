@@ -1,16 +1,12 @@
 import ast
 import asyncio
+import random
 import threading
 import time
 import traceback
 
 from util import *
 import socket
-
-p = pyaudio.PyAudio()
-stream = p.open(
-    format=pyaudio.paInt16, channels=2, rate=44100, output=True, frames_per_buffer=512
-)
 
 
 class ConferenceServer:
@@ -246,16 +242,27 @@ class MainServer:
 
         try:
             # build conference port's socket
+            self.conference_port_save += 10 * random.randint(3, 109)
             use_port = self.conference_port_save
             conference_server.conf_serve_ports[from_info] = use_port
             conference_server.client_conns[from_info] = {}
             conference_server.client_conns[from_info][use_port] = socket.socket(
                 socket.AF_INET, socket.SOCK_DGRAM
             )
-            conference_server.client_conns[from_info][use_port].bind(
-                (self.server_ip, use_port)
-            )
-            self.conference_port_save += 1
+            try:
+                conference_server.client_conns[from_info][use_port].bind(
+                    (self.server_ip, use_port)
+                )
+            except:
+                self.conference_port_save += 10 * random.randint(3, 109)
+                use_port = self.conference_port_save
+                conference_server.conf_serve_ports[from_info] = use_port
+                conference_server.client_conns[from_info][use_port].bind(
+                    (self.server_ip, use_port)
+                )
+                print(f"Port conflict, change to {use_port}")
+
+            self.conference_port_save += random.randint(3, 109)
 
             if not conference_server.isp2p:
                 conference_server.clients_info.append(from_info)
@@ -271,7 +278,7 @@ class MainServer:
                     conference_server.client_conns[from_info][use_port].bind(
                         (self.server_ip, use_port)
                     )
-                    self.conference_port_save += 1
+                    self.conference_port_save += random.randint(3, 109)
 
                 save_server_port(self.conference_port_save)
 

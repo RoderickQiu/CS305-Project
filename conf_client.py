@@ -230,12 +230,12 @@ class ConferenceClient:
         self.udp_addr_count = get_client_port() + 10 * random.randint(3, 109)
         self.sockets["confe"].bind((self.CLIENT_IP, self.udp_addr_count))
         self.udp_addrs["confe"] = (self.CLIENT_IP, self.udp_addr_count)
-        self.udp_addr_count += 1
+        self.udp_addr_count += random.randint(3, 109)
 
         for data_type in self.data_types:
             self.sockets[data_type].bind((self.CLIENT_IP, self.udp_addr_count))
             self.udp_addrs[data_type] = (self.CLIENT_IP, self.udp_addr_count)
-            self.udp_addr_count += 1
+            self.udp_addr_count += random.randint(3, 109)
 
         save_client_port(self.udp_addr_count)
         threading.Thread(target=self.recv_commands, daemon=True).start()
@@ -272,6 +272,7 @@ class ConferenceClient:
                     return
 
                 threading.Thread(target=self.recv_text_messages, daemon=True).start()
+                threading.Thread(target=self.recv_audio, daemon=True).start()
                 threading.Thread(target=self.recv_video, daemon=True).start()
                 threading.Thread(target=self.recv_screen, daemon=True).start()
 
@@ -472,7 +473,7 @@ class ConferenceClient:
             self.sockets["text"].sendto(
                 msg.encode(), (self.server_host, self.data_serve_ports["text"])
             )
-            
+
             print(f"[Info]: Message sent: {message}")
             print(f"[Info]: Message encrypt: {msg}")
 
@@ -539,7 +540,6 @@ class ConferenceClient:
                             target=self.recv_text_messages, daemon=True
                         ).start()
                         threading.Thread(target=self.recv_video, daemon=True).start()
-                        threading.Thread(target=self.recv_audio, daemon=True).start()
                         threading.Thread(target=self.recv_audio, daemon=True).start()
                         threading.Thread(target=self.recv_screen, daemon=True).start()
 
