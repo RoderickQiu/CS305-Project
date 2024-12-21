@@ -590,7 +590,7 @@ class ConferenceClient:
 
         def video_stream():
             self.cap = cv2.VideoCapture(0)
-            encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 60]
+            encode_param = [int(cv2.IMWRITE_WEBP_QUALITY), 60]
 
             try:
                 while self.cap.isOpened() and self.on_camera:
@@ -600,7 +600,7 @@ class ConferenceClient:
                     img_resized = cv2.resize(img, (480, 320))
                     img_flipped = cv2.flip(img_resized, 1)
 
-                    result, imgencode = cv2.imencode(".jpg", img_flipped, encode_param)
+                    result, imgencode = cv2.imencode(".webp", img_flipped, encode_param)
                     id_num = self.id.to_bytes(4, byteorder="big")
 
                     frame_data = imgencode.tobytes()
@@ -611,7 +611,6 @@ class ConferenceClient:
                         combined_data,
                         (self.server_host, self.data_serve_ports["camera"]),
                     )
-
 
                     if self.isp2p:  # when in p2p mode, also save the video to local
                         nparr = np.frombuffer(frame_data, dtype=np.uint8)
@@ -656,7 +655,7 @@ class ConferenceClient:
             return
 
         def screen_stream():
-            encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 45]
+            encode_param = [int(cv2.IMWRITE_WEBP_QUALITY), 45]
 
             try:
                 while self.on_screen:
