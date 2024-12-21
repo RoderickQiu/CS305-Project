@@ -66,10 +66,12 @@ def print_screen():
     result += "</div>"
     return result
 
+
 def encrypt_decrypt(message, offset=8):
     # 对每个字符进行加密或解密
-    result = ''.join(chr(ord(char) + offset) for char in message)
+    result = "".join(chr(ord(char) + offset) for char in message)
     return result
+
 
 # 示例用法
 message = "Hello, World!"
@@ -227,15 +229,15 @@ class ConferenceClient:
         self.on_meeting = True
         self.conference_id = conference_id
 
-        self.udp_addr_count = get_client_port() + 10 * random.randint(3, 109)
+        self.udp_addr_count = get_client_port() + 5 * random.randint(3, 53)
         self.sockets["confe"].bind((self.CLIENT_IP, self.udp_addr_count))
         self.udp_addrs["confe"] = (self.CLIENT_IP, self.udp_addr_count)
-        self.udp_addr_count += random.randint(3, 109)
+        self.udp_addr_count += random.randint(3, 53)
 
         for data_type in self.data_types:
             self.sockets[data_type].bind((self.CLIENT_IP, self.udp_addr_count))
             self.udp_addrs[data_type] = (self.CLIENT_IP, self.udp_addr_count)
-            self.udp_addr_count += random.randint(3, 109)
+            self.udp_addr_count += random.randint(3, 53)
 
         save_client_port(self.udp_addr_count)
         threading.Thread(target=self.recv_commands, daemon=True).start()

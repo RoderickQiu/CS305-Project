@@ -242,7 +242,7 @@ class MainServer:
 
         try:
             # build conference port's socket
-            self.conference_port_save += 10 * random.randint(3, 109)
+            self.conference_port_save += 5 * random.randint(3, 53)
             use_port = self.conference_port_save
             conference_server.conf_serve_ports[from_info] = use_port
             conference_server.client_conns[from_info] = {}
@@ -254,7 +254,7 @@ class MainServer:
                     (self.server_ip, use_port)
                 )
             except:
-                self.conference_port_save += 10 * random.randint(3, 109)
+                self.conference_port_save += 5 * random.randint(3, 53)
                 use_port = self.conference_port_save
                 conference_server.conf_serve_ports[from_info] = use_port
                 conference_server.client_conns[from_info][use_port].bind(
@@ -262,7 +262,7 @@ class MainServer:
                 )
                 print(f"Port conflict, change to {use_port}")
 
-            self.conference_port_save += random.randint(3, 109)
+            self.conference_port_save += random.randint(3, 53)
 
             if not conference_server.isp2p:
                 conference_server.clients_info.append(from_info)
@@ -278,7 +278,7 @@ class MainServer:
                     conference_server.client_conns[from_info][use_port].bind(
                         (self.server_ip, use_port)
                     )
-                    self.conference_port_save += random.randint(3, 109)
+                    self.conference_port_save += random.randint(3, 53)
 
                 save_server_port(self.conference_port_save)
 
