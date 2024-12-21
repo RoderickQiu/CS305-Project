@@ -564,33 +564,18 @@ class ConferenceClient:
                 try:
                     data = streamin.read(1024)  # 从麦克风获取音频数据
                     # print("收集完毕")
-                    if len(data) > MAX_SIZE:
-                        # print("数据过大，进行分块发送...")
-                        chunks = [
-                            data[i : i + MAX_SIZE]
-                            for i in range(0, len(data), MAX_SIZE)
-                        ]
-                        for chunk in chunks:
-                            try:
-                                self.sockets["audio"].sendto(
-                                    chunk,
-                                    (self.server_host, self.data_serve_ports["audio"]),
-                                )
-                            except:
-                                print("[Warn]: empty audio")
-                    else:
-                        if "audio" in self.sockets:
-                            try:
-                                self.sockets["audio"].sendto(
-                                    data,
-                                    (self.server_host, self.data_serve_ports["audio"]),
-                                )  # 发送数据给服务器
-                            except:
-                                print("[Warn]: empty audio")
+                    if "audio" in self.sockets:
+                        try:
+                            self.sockets["audio"].sendto(
+                                data,
+                                (self.server_host, self.data_serve_ports["audio"]),
+                            )  # 发送数据给服务器
+                        except:
+                            print("[Warn]: empty audio")
                 except:
                     print("[Warn]: empty audio")
 
-                time.sleep(0.01)
+                time.sleep(0.02)
 
         threading.Thread(target=audio_stream, daemon=True).start()
 
