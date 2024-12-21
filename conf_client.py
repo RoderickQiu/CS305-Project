@@ -590,44 +590,28 @@ class ConferenceClient:
 
         def video_stream():
             self.cap = cv2.VideoCapture(0)
-            encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 65]
+            encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 60]
 
             try:
                 while self.cap.isOpened() and self.on_camera:
                     open, img = cap.read()
                     if not open:
                         break
-                    img_resized = cv2.resize(img, (540, 320))
+                    img_resized = cv2.resize(img, (480, 320))
                     img_flipped = cv2.flip(img_resized, 1)
 
-                    result, imgencode = cv2.imencode(".webp", img_flipped, encode_param)
+                    result, imgencode = cv2.imencode(".jpg", img_flipped, encode_param)
                     id_num = self.id.to_bytes(4, byteorder="big")
-                    frame_data = imgencode.tobytes()
-                    self.camera_stream_cnt += 1
-                    stream_id = self.camera_stream_cnt.to_bytes(24, byteorder="big")
 
-                    # cut into 3 pieces
-                    for i in range(3):
-                        try:
-                            identifier = i.to_bytes(2, byteorder="big")
-                            combined_data = (
-                                id_num
-                                + stream_id
-                                + identifier
-                                + frame_data[
-                                    i
-                                    * len(frame_data)
-                                    // 3 : (i + 1)
-                                    * len(frame_data)
-                                    // 3
-                                ]
-                            )
-                            self.sockets["camera"].sendto(
-                                combined_data,
-                                (self.server_host, self.data_serve_ports["camera"]),
-                            )
-                        except:
-                            print(f"[Warn]: Empty video, frame {i}")
+                    frame_data = imgencode.tobytes()
+                    total_size = len(frame_data)  # 获取总大小
+                    combined_data = id_num + frame_data
+
+                    self.sockets["camera"].sendto(
+                        combined_data,
+                        (self.server_host, self.data_serve_ports["camera"]),
+                    )
+
 
                     if self.isp2p:  # when in p2p mode, also save the video to local
                         nparr = np.frombuffer(frame_data, dtype=np.uint8)
@@ -647,29 +631,18 @@ class ConferenceClient:
     def recv_video(self):
         try:
             while self.on_meeting:
-                packet, _ = self.sockets["camera"].recvfrom(65000)
+                packet, _ = self.sockets["camera"].recvfrom(60000)
                 id_num = int.from_bytes(packet[:4], byteorder="big")
-                stream_id = int.from_bytes(packet[4:28], byteorder="big")
-                identifier = int.from_bytes(packet[28:30], byteorder="big")
+                frame_data = packet[4:]
 
-                frame_data = packet[30:]
-
-                if stream_id not in self.camera_stack:
-                    self.camera_stack[stream_id] = {}
-                self.camera_stack[stream_id][identifier] = frame_data
-                if len(self.camera_stack[stream_id]) == 3:
-                    frame_data = b"".join(
-                        [self.camera_stack[stream_id][i] for i in range(3)]
-                    )
-                    nparr = np.frombuffer(frame_data, dtype=np.uint8)
-                    if nparr is not None:
-                        video_images[str(id_num)] = get_base64_image(nparr)
-                        last_receive_time[str(id_num)] = time.time()
+                nparr = np.frombuffer(frame_data, dtype=np.uint8)
+                if nparr is not None:
+                    video_images[str(id_num)] = get_base64_image(nparr)
+                    last_receive_time[str(id_num)] = time.time()
 
         except Exception as e:
             if self.on_meeting:
-                traceback.print_exc()
-                print(f"[Error]: Failed to receive others' video. {e}")
+                print(f"[Error]: Failed to receive others video. {e}")
 
     def screen_video(self):
         if not self.on_meeting:
@@ -720,6 +693,7 @@ class ConferenceClient:
                             )
                         except:
                             print(f"[Warn]: Empty video, frame {i}")
+                            print()
 
                     if self.isp2p:  # when in p2p mode, also save the video to local
                         nparr = np.frombuffer(frame_data, dtype=np.uint8)
