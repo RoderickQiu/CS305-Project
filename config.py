@@ -32,6 +32,8 @@ IN_CHANNELS = 1  # Channels for audio capture
 OUT_CHANNELS = 2  # Channels for audio playback
 IN_RATE = 16000  # Sampling rate for audio capture
 OUT_RATE = 44100  # Sampling rate for audio playback
+TRANSMIT_CHANNELS = 1  # Channels for audio transmission
+TRANSMIT_RATE = 44100  # Sampling rate for audio transmission
 
 camera_width, camera_height = 480, 480  # resolution for camera capture
 

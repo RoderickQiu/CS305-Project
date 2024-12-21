@@ -580,18 +580,42 @@ class ConferenceClient:
                     break
                 try:
                     data = self.streamin.read(CHUNK)
-                    if "audio" in self.sockets:
-                        try:
-                            channel_info = IN_CHANNELS.to_bytes(2, byteorder="big")
-                            rate_info = IN_RATE.to_bytes(16, byteorder="big")
-                            combined_data = channel_info + rate_info + data
-                            self.sockets["audio"].sendto(
-                                combined_data,
-                                (self.server_host, self.data_serve_ports["audio"]),
-                            )  # 发送数据给服务器
-                        except:
-                            traceback.print_exc()
-                            print("[Warn]: Empty audio")
+                    try:
+                        original_audio_data = np.frombuffer(data, dtype=np.int16)
+
+                        # Resample the audio data
+                        original_length = len(original_audio_data)
+                        new_length = int(original_length * TRANSMIT_RATE / IN_RATE)
+                        resampled_audio_data = resample(original_audio_data, new_length)
+
+                        # Convert to desired number of channels
+                        if TRANSMIT_CHANNELS != IN_CHANNELS:
+                            if TRANSMIT_CHANNELS == 1:
+                                # Convert to mono by averaging channels
+                                resampled_audio_data = resampled_audio_data.reshape(
+                                    -1, TRANSMIT_CHANNELS
+                                ).mean(axis=1)
+                            else:
+                                # Convert to stereo or more by duplicating channels
+                                resampled_audio_data = np.tile(
+                                    resampled_audio_data.reshape(-1, 1),
+                                    TRANSMIT_CHANNELS,
+                                )
+
+                        # Convert the resampled audio data back to bytes
+                        data = resampled_audio_data.astype(np.int16).tobytes()
+
+                        if "audio" in self.sockets:
+                            try:
+                                self.sockets["audio"].sendto(
+                                    data,
+                                    (self.server_host, self.data_serve_ports["audio"]),
+                                )
+                            except:
+                                traceback.print_exc()
+                                print("[Warn]: Empty audio")
+                    except:
+                        print("[Warn]: Empty Audio")
                 except:
                     traceback.print_exc()
                     print("[Warn]: empty audio")
@@ -617,23 +641,19 @@ class ConferenceClient:
         while self.on_meeting:
             try:
                 data = self.sockets["audio"].recv(65535)
-
-                in_channels = int.from_bytes(data[:2], byteorder="big")
-                in_rate = int.from_bytes(data[2:18], byteorder="big")
-                data = data[18:]
                 audio_data = np.frombuffer(data, dtype=np.int16)
 
                 # Resample audio data
                 original_length = len(audio_data)
-                new_length = int(original_length * OUT_RATE / in_rate)
+                new_length = int(original_length * OUT_RATE / TRANSMIT_RATE)
                 resampled_audio_data = resample(audio_data, new_length)
 
                 # Convert to desired number of channels
-                if in_channels != OUT_CHANNELS:
+                if TRANSMIT_CHANNELS != OUT_CHANNELS:
                     if OUT_CHANNELS == 1:
                         # Convert to mono by averaging channels
                         resampled_audio_data = resampled_audio_data.reshape(
-                            -1, in_channels
+                            -1, TRANSMIT_CHANNELS
                         ).mean(axis=1)
                     else:
                         # Convert to stereo or more by duplicating channels
