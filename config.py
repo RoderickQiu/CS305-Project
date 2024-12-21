@@ -20,16 +20,18 @@ CANCEL_MSG = "The conference has been canceled by the manager"
 SHOULD_RECREATE_MSG = "Recreating the conference via server mode..."
 P2P_ESTAB_MSG = "P2P Established"
 
-SERVER_IP = "10.27.46.111"
-CLIENT_IP = "10.27.46.111"
+SERVER_IP = "10.27.107.219"
+CLIENT_IP = "10.27.107.219"
 TIMEOUT_SERVER = 5
 DGRAM_SIZE = 1500  # UDP
 LOG_INTERVAL = 2
 
 
 CHUNK = 1024
-CHANNELS = 2  # Channels for audio capture
-RATE = 48000  # Sampling rate for audio capture
+IN_CHANNELS = 1  # Channels for audio capture
+OUT_CHANNELS = 2  # Channels for audio playback
+IN_RATE = 16000  # Sampling rate for audio capture
+OUT_RATE = 44100  # Sampling rate for audio playback
 
 camera_width, camera_height = 480, 480  # resolution for camera capture
 

@@ -2,13 +2,13 @@ import ast
 import os
 import traceback
 import urllib
+from scipy.signal import resample
 from util import *
 import socket
 from typing import Dict
 import json
 import threading
 import cv2
-import struct
 import time
 from flask import Flask
 from werkzeug.serving import make_server
@@ -24,9 +24,6 @@ werkzeug_logger.setLevel(logging.ERROR)
 video_images = dict()
 screen_images = dict()
 last_receive_time = dict()
-
-# 初始化 PyAudio
-p = pyaudio.PyAudio()
 
 
 def get_video_view_link(flask_url):
@@ -71,16 +68,6 @@ def encrypt_decrypt(message, offset=8):
     # 对每个字符进行加密或解密
     result = "".join(chr(ord(char) + offset) for char in message)
     return result
-
-
-# 示例用法
-message = "Hello, World!"
-encrypted_message = encrypt_decrypt(message)  # 加密
-print("Encrypted:", encrypted_message)
-
-# 要解密，只需传入负偏移量
-decrypted_message = encrypt_decrypt(encrypted_message, -8)
-print("Decrypted:", decrypted_message)
 
 
 class FlaskServer:
@@ -138,6 +125,9 @@ class ConferenceClient:
         self.share_data = {}
         self.isp2p = False
         self.p2p_no_peer = True
+
+        self.streamin = None
+        self.streamout = None
 
         self.conference_info = (
             None  # you may need to save and update some conference_info regularly
@@ -308,18 +298,22 @@ class ConferenceClient:
         self.on_meeting = False
         self.on_audio = False
 
-        msg = f"quit"
-        self.sockets["main"].sendall(msg.encode())
-        self.recv_data = self.sockets["main"].recv(CHUNK).decode()
-        self.output_data(self.sockets["main"])
+        try:
+            msg = f"quit"
+            self.sockets["main"].sendall(msg.encode())
+            self.recv_data = self.sockets["main"].recv(CHUNK).decode()
+            self.output_data(self.sockets["main"])
 
-        recv_lines = self.recv_data.splitlines()
-        print(f"[info]:{recv_lines}\n!!!!!")
-        if not recv_lines[-1] == "200":
-            print(f"[Error]: An error occurs, please input again!")
+            recv_lines = self.recv_data.splitlines()
+            print(f"[info]:{recv_lines}\n!!!!!")
+            if not recv_lines[-1] == "200":
+                print(f"[Error]: An error occurs, please input again!")
+                return
+
+            self.configure_cancelled()
+        except:
+            traceback.print_exc()
             return
-
-        self.configure_cancelled()
 
     def configure_cancelled(self, new_conf_id=-1):
         try:
@@ -340,6 +334,13 @@ class ConferenceClient:
 
             self.on_meeting = False
             self.conference_id = -1
+
+            if self.streamin is not None:
+                self.streamin.stop_stream()
+                self.streamin.close()
+            if self.streamout is not None:
+                self.streamout.stop_stream()
+                self.streamout.close()
 
             if new_conf_id > -1:  # join the newly recreated conf in server mode
                 self.join_conference(new_conf_id, just_recreated=True)
@@ -559,32 +560,91 @@ class ConferenceClient:
             return
 
         def audio_stream():
-            MAX_SIZE = 65535
+            FORMAT = pyaudio.paInt16
+            audio = pyaudio.PyAudio()
+            if self.streamin is not None:
+                self.streamin.stop_stream()
+                self.streamin.close()
+            self.streamin = audio.open(
+                format=FORMAT,
+                channels=IN_CHANNELS,
+                rate=IN_RATE,
+                input=True,
+                frames_per_buffer=CHUNK,
+            )
+
             while self.on_audio:
+                if self.streamin is None:
+                    break
+                if (not self.streamin.is_active()) or self.streamin.is_stopped():
+                    break
                 try:
-                    data = streamin.read(1024)  # 从麦克风获取音频数据
-                    # print("收集完毕")
+                    data = self.streamin.read(CHUNK)
                     if "audio" in self.sockets:
                         try:
+                            channel_info = IN_CHANNELS.to_bytes(2, byteorder="big")
+                            rate_info = IN_RATE.to_bytes(16, byteorder="big")
+                            combined_data = channel_info + rate_info + data
                             self.sockets["audio"].sendto(
-                                data,
+                                combined_data,
                                 (self.server_host, self.data_serve_ports["audio"]),
                             )  # 发送数据给服务器
                         except:
-                            print("[Warn]: empty audio")
+                            traceback.print_exc()
+                            print("[Warn]: Empty audio")
                 except:
+                    traceback.print_exc()
                     print("[Warn]: empty audio")
-
-                time.sleep(0.02)
 
         threading.Thread(target=audio_stream, daemon=True).start()
 
     def recv_audio(self):
+        FORMAT = pyaudio.paInt16
+        audio = pyaudio.PyAudio()
+        if self.streamout is not None:
+            self.streamout.stop_stream()
+            self.streamout.close()
+        self.streamout = audio.open(
+            format=FORMAT,
+            channels=OUT_CHANNELS,
+            rate=OUT_RATE,
+            output=True,
+            frames_per_buffer=CHUNK,
+        )
+
         while self.on_meeting:
             try:
                 data = self.sockets["audio"].recv(65535)
-                # print("接受到audio")
-                streamout.write(data)
+
+                in_channels = int.from_bytes(data[:2], byteorder="big")
+                in_rate = int.from_bytes(data[2:18], byteorder="big")
+                data = data[18:]
+                audio_data = np.frombuffer(data, dtype=np.int16)
+
+                # Resample audio data
+                original_length = len(audio_data)
+                new_length = int(original_length * OUT_RATE / in_rate)
+                resampled_audio_data = resample(audio_data, new_length)
+
+                # Convert to desired number of channels
+                if in_channels != OUT_CHANNELS:
+                    if OUT_CHANNELS == 1:
+                        # Convert to mono by averaging channels
+                        resampled_audio_data = resampled_audio_data.reshape(
+                            -1, in_channels
+                        ).mean(axis=1)
+                    else:
+                        # Convert to stereo or more by duplicating channels
+                        resampled_audio_data = np.tile(
+                            resampled_audio_data.reshape(-1, 1), OUT_CHANNELS
+                        )
+
+                # Write resampled and channel-adjusted data to output stream
+                if self.streamout is not None:
+                    if self.streamout.is_active() and not self.streamout.is_stopped():
+                        self.streamout.write(
+                            resampled_audio_data.astype(np.int16).tobytes()
+                        )
             except:
                 print("[Warn] Empty audio")
 
@@ -834,6 +894,9 @@ class ConferenceClient:
                             print()
                     elif fields[1] == "audio":
                         self.send_multimedia_signal("close audio")
+                        if self.streamin is not None:
+                            self.streamin.stop_stream()
+                            self.streamin.close()
                         self.on_audio = False
                         self.was_on_record[1] = False
                     elif fields[1] == "screen":
