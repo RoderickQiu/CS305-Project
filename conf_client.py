@@ -66,22 +66,19 @@ def print_screen():
     result += "</div>"
     return result
 
+def encrypt_decrypt(message, offset=8):
+    # 对每个字符进行加密或解密
+    result = ''.join(chr(ord(char) + offset) for char in message)
+    return result
 
-def encrypt_decrypt(text: str, key: int) -> str:
-    """
-    使用 XOR 算法对文本进行加密或解密，
-    并确保结果在可打印的 ASCII 范围内（32-126）。
-    :param text: 原始文本
-    :param key: 密钥（整数）
-    :return: 加密或解密后的文本
-    """
-    result = []
-    for char in text:
-        xor_result = ord(char) ^ key  # 计算 XOR
-        # 将结果调整到 ASCII 可打印字符范围（32-126）
-        adjusted_result = 32 + (xor_result % 95)
-        result.append(chr(adjusted_result))
-    return ''.join(result)
+# 示例用法
+message = "Hello, World!"
+encrypted_message = encrypt_decrypt(message)  # 加密
+print("Encrypted:", encrypted_message)
+
+# 要解密，只需传入负偏移量
+decrypted_message = encrypt_decrypt(encrypted_message, -8)
+print("Decrypted:", decrypted_message)
 
 
 class FlaskServer:
@@ -470,13 +467,14 @@ class ConferenceClient:
             return
 
         try:
-            msg = encrypt_decrypt(message, 42)
+            msg = encrypt_decrypt(message)
 
             self.sockets["text"].sendto(
                 msg.encode(), (self.server_host, self.data_serve_ports["text"])
             )
-            print(f"[Info]: Message encrypt: {msg}")
+            
             print(f"[Info]: Message sent: {message}")
+            print(f"[Info]: Message encrypt: {msg}")
 
         except KeyError:
             print(f"[Error]: Text socket is not initialized.")
@@ -492,7 +490,7 @@ class ConferenceClient:
         try:
             while self.on_meeting:
                 data = self.sockets["text"].recv(CHUNK).decode()  # Blocking receive
-                data = encrypt_decrypt(data, 42)
+                data = encrypt_decrypt(data, -8)
                 if data:
                     print(f"[Message]: {data}")
         except Exception as e:
