@@ -463,7 +463,9 @@ class ConferenceClient:
             self.sockets["text"].sendto(
                 msg.encode(), (self.server_host, self.data_serve_ports["text"])
             )
-            print(f"[Info]: Message sent: {msg}")
+            print(f"[Info]: Message encrypt: {msg}")
+            print(f"[Info]: Message sent: {message}")
+
         except KeyError:
             print(f"[Error]: Text socket is not initialized.")
         except Exception as e:
