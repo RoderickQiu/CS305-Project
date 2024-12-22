@@ -219,7 +219,7 @@ class ConferenceClient:
         self.on_meeting = True
         self.conference_id = conference_id
 
-        self.udp_addr_count = get_client_port() + 5 * random.randint(3, 53)
+        self.udp_addr_count = get_client_port() + 5 * 53
         self.sockets["confe"].bind((self.CLIENT_IP, self.udp_addr_count))
         self.udp_addrs["confe"] = (self.CLIENT_IP, self.udp_addr_count)
         self.udp_addr_count += random.randint(3, 53)
@@ -617,6 +617,7 @@ class ConferenceClient:
                                     data,
                                     (self.server_host, self.data_serve_ports["audio"]),
                                 )
+                                print(f"[Info]: Send audio to {self.server_host},{self.data_serve_ports['audio']}")
                             except:
                                 traceback.print_exc()
                                 print("[Warn]: Empty audio")
@@ -649,6 +650,7 @@ class ConferenceClient:
             try:
                 if "audio" in self.sockets and "audio" in self.data_serve_ports:
                     data = self.sockets["audio"].recv(65535)
+                    print(f"[Info]: Send audio to {self.server_host},{self.data_serve_ports['audio']}")
                     audio_data = np.frombuffer(data, dtype=np.int16)
 
                     # Resample audio data

@@ -384,6 +384,7 @@ class MainServer:
             print(f"Client {from_info} quit conference {conference_id}")
             return "Quit conference successfully", 200
         except Exception as e:
+            traceback.print_exc()
             print(f"Error in quitting conference: {e}")
             return "Error in quitting conference", 500
 
