@@ -374,12 +374,30 @@ class MainServer:
                 )
                 return "Quit conference successfully", 200
 
-            conference_server.conf_serve_ports.pop(from_info)
-            self.from_info_to_conference.pop(from_info)
-            conference_server.clients_info.remove(from_info)
-            conference_server.data_serve_ports.pop(from_info)
-            conference_server.on_audio.pop(from_info)
-            del conference_server.client_conns[from_info]
+            try:
+                conference_server.conf_serve_ports.pop(from_info)
+            except:
+                print()
+            try:
+                self.from_info_to_conference.pop(from_info)
+            except:
+                print()
+            try:
+                conference_server.clients_info.remove(from_info)
+            except:
+                print()
+            try:
+                conference_server.data_serve_ports.pop(from_info)
+            except:
+                print()
+            try:
+                conference_server.on_audio.pop(from_info)
+            except:
+                print()
+            try:
+                del conference_server.client_conns[from_info]
+            except:
+                print()
 
             print(f"Client {from_info} quit conference {conference_id}")
             return "Quit conference successfully", 200
