@@ -318,6 +318,8 @@ class ConferenceClient:
     def configure_cancelled(self, new_conf_id=-1):
         try:
             try:
+                self.on_screen = False
+                self.on_audio = False
                 self.on_camera = False
                 if self.cap is not None:
                     self.cap.release()
@@ -348,6 +350,10 @@ class ConferenceClient:
             return
 
     def perform_exit(self):
+        self.on_screen = False
+        self.on_audio = False
+        self.on_camera = False
+
         if self.on_meeting:
             self.quit_conference()
 
@@ -395,6 +401,7 @@ class ConferenceClient:
         else:
             self.configure_cancelled()
             self.on_camera = False
+            self.on_screen = False
             self.on_meeting = False
             self.conference_id = -1
 
