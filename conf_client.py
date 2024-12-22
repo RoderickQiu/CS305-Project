@@ -622,12 +622,13 @@ class ConferenceClient:
                                     (self.server_host, self.data_serve_ports["audio"]),
                                 )
                             except:
-                                # traceback.print_exc()
+                                traceback.print_exc()
                                 print("[Warn]: Empty audio")
                     except:
+                        traceback.print_exc()
                         print("[Warn]: Empty Audio")
                 except:
-                    # traceback.print_exc()
+                    traceback.print_exc()
                     print("[Warn]: empty audio")
 
                 time.sleep(0.01)
@@ -650,7 +651,8 @@ class ConferenceClient:
 
         while self.on_meeting:
             try:
-                data = self.sockets["audio"].recv(65535)
+                if "audio" in self.sockets:
+                    data = self.sockets["audio"].recv(65535)
                 audio_data = np.frombuffer(data, dtype=np.int16)
 
                 # Resample audio data
@@ -678,6 +680,7 @@ class ConferenceClient:
                             resampled_audio_data.astype(np.int16).tobytes()
                         )
             except:
+                # traceback.print_exc()
                 print("[Warn] Empty audio")
 
     def send_video(self):
