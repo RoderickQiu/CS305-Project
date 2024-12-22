@@ -312,7 +312,6 @@ class ConferenceClient:
 
             self.configure_cancelled()
         except:
-            traceback.print_exc()
             return
 
     def configure_cancelled(self, new_conf_id=-1):
@@ -492,7 +491,6 @@ class ConferenceClient:
         except Exception as e:
             if self.on_meeting:
                 print(f"[Error]: Failed to send message. {e}")
-                traceback.print_exc()
 
     def recv_text_messages(self):
         """
@@ -506,7 +504,6 @@ class ConferenceClient:
                     print(f"[Message]: {data}")
         except Exception as e:
             if self.on_meeting:
-                traceback.print_exc()
                 print(f"[Error]: Failed to receive messages. {e}")
 
     def recv_commands(self):
@@ -558,7 +555,6 @@ class ConferenceClient:
                         print(f"[Message]: {data}")
         except Exception as e:
             if self.on_meeting:
-                traceback.print_exc()
                 print(f"[Error]: Failed to receive messages. {e}")
 
     def send_audio(self):
@@ -650,33 +646,37 @@ class ConferenceClient:
 
         while self.on_meeting:
             try:
-                data = self.sockets["audio"].recv(65535)
-                audio_data = np.frombuffer(data, dtype=np.int16)
+                if "audio" in self.sockets and "audio" in self.data_serve_ports:
+                    data = self.sockets["audio"].recv(65535)
+                    audio_data = np.frombuffer(data, dtype=np.int16)
 
-                # Resample audio data
-                original_length = len(audio_data)
-                new_length = int(original_length * OUT_RATE / TRANSMIT_RATE)
-                resampled_audio_data = resample(audio_data, new_length)
+                    # Resample audio data
+                    original_length = len(audio_data)
+                    new_length = int(original_length * OUT_RATE / TRANSMIT_RATE)
+                    resampled_audio_data = resample(audio_data, new_length)
 
-                # Convert to desired number of channels
-                if TRANSMIT_CHANNELS != OUT_CHANNELS:
-                    if OUT_CHANNELS == 1:
-                        # Convert to mono by averaging channels
-                        resampled_audio_data = resampled_audio_data.reshape(
-                            -1, TRANSMIT_CHANNELS
-                        ).mean(axis=1)
-                    else:
-                        # Convert to stereo or more by duplicating channels
-                        resampled_audio_data = np.tile(
-                            resampled_audio_data.reshape(-1, 1), OUT_CHANNELS
-                        )
+                    # Convert to desired number of channels
+                    if TRANSMIT_CHANNELS != OUT_CHANNELS:
+                        if OUT_CHANNELS == 1:
+                            # Convert to mono by averaging channels
+                            resampled_audio_data = resampled_audio_data.reshape(
+                                -1, TRANSMIT_CHANNELS
+                            ).mean(axis=1)
+                        else:
+                            # Convert to stereo or more by duplicating channels
+                            resampled_audio_data = np.tile(
+                                resampled_audio_data.reshape(-1, 1), OUT_CHANNELS
+                            )
 
-                # Write resampled and channel-adjusted data to output stream
-                if self.streamout is not None:
-                    if self.streamout.is_active() and not self.streamout.is_stopped():
-                        self.streamout.write(
-                            resampled_audio_data.astype(np.int16).tobytes()
-                        )
+                    # Write resampled and channel-adjusted data to output stream
+                    if self.streamout is not None:
+                        if (
+                            self.streamout.is_active()
+                            and not self.streamout.is_stopped()
+                        ):
+                            self.streamout.write(
+                                resampled_audio_data.astype(np.int16).tobytes()
+                            )
             except:
                 print("[Warn] Empty audio")
 
@@ -710,17 +710,18 @@ class ConferenceClient:
                     total_size = len(frame_data)  # 获取总大小
                     combined_data = id_num + frame_data
 
-                    self.sockets["camera"].sendto(
-                        combined_data,
-                        (self.server_host, self.data_serve_ports["camera"]),
-                    )
+                    if "camera" in self.sockets and "camera" in self.data_serve_ports:
+                        self.sockets["camera"].sendto(
+                            combined_data,
+                            (self.server_host, self.data_serve_ports["camera"]),
+                        )
 
-                    if self.isp2p:  # when in p2p mode, also save the video to local
-                        nparr = np.frombuffer(frame_data, dtype=np.uint8)
-                        id_num = self.id
-                        if nparr is not None:
-                            video_images[str(id_num)] = get_base64_image(nparr)
-                            last_receive_time[str(id_num)] = time.time()
+                        if self.isp2p:  # when in p2p mode, also save the video to local
+                            nparr = np.frombuffer(frame_data, dtype=np.uint8)
+                            id_num = self.id
+                            if nparr is not None:
+                                video_images[str(id_num)] = get_base64_image(nparr)
+                                last_receive_time[str(id_num)] = time.time()
 
                     time.sleep(0.01)
             except:
@@ -789,10 +790,14 @@ class ConferenceClient:
                                     // 4
                                 ]
                             )
-                            self.sockets["screen"].sendto(
-                                combined_data,
-                                (self.server_host, self.data_serve_ports["screen"]),
-                            )
+                            if (
+                                "screen" in self.sockets
+                                and "screen" in self.data_serve_ports
+                            ):
+                                self.sockets["screen"].sendto(
+                                    combined_data,
+                                    (self.server_host, self.data_serve_ports["screen"]),
+                                )
                         except:
                             print(f"[Warn]: Empty video, frame {i}")
                             print()
@@ -806,7 +811,6 @@ class ConferenceClient:
 
                     time.sleep(0.01)
             except:
-                traceback.print_exc()
                 print("[Warn]: Empty video")
 
         threading.Thread(target=screen_stream, daemon=True).start()
@@ -836,7 +840,6 @@ class ConferenceClient:
 
         except Exception as e:
             if self.on_meeting:
-                traceback.print_exc()
                 print(f"[Error]: Failed to receive others video. {e}")
 
     def send_multimedia_signal(self, word):
