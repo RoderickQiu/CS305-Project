@@ -64,11 +64,21 @@ def print_screen():
     return result
 
 
-def encrypt_decrypt(message, offset=8):
-    # 对每个字符进行加密或解密
-    result = "".join(chr(ord(char) + offset) for char in message)
-    return result
-
+def encrypt_decrypt(data: str, key: int) -> str:
+    """
+    Simple encryption/decryption using Caesar Cipher.
+    Positive key for encryption, negative key for decryption.
+    """
+    result = []
+    for char in data:
+        if char.isalpha():  # Only encrypt/decrypt alphabetic characters
+            shift = key if char.islower() else key
+            new_char = chr((ord(char) - ord('a') + shift) % 26 + ord('a')) if char.islower() else \
+                       chr((ord(char) - ord('A') + shift) % 26 + ord('A'))
+            result.append(new_char)
+        else:
+            result.append(char)  # Non-alphabetic characters are not encrypted
+    return ''.join(result)
 
 class FlaskServer:
     def __init__(self, app, host, port):
@@ -460,9 +470,6 @@ class ConferenceClient:
 
         print(f"[Info]: List of ongoing conferences: {recv_lines[0]}")
 
-    def encrypt_decrypt(text: str, key: int) -> str:
-
-        return "".join(chr(ord(char) ^ key) for char in text)
 
     def send_text_message(self, message: str):
         """
@@ -477,14 +484,14 @@ class ConferenceClient:
             return
 
         try:
-            msg = encrypt_decrypt(message)
-
+            
+            encrypted_message = encrypt_decrypt(message, 8)
             self.sockets["text"].sendto(
-                msg.encode(), (self.server_host, self.data_serve_ports["text"])
+                encrypted_message.encode(), (self.server_host, self.data_serve_ports["text"])
             )
 
             print(f"[Info]: Message sent: {message}")
-            print(f"[Info]: Message encrypt: {msg}")
+            print(f"[Info]: Message encrypt: {encrypted_message}")
 
         except KeyError:
             print(f"[Error]: Text socket is not initialized.")
@@ -499,9 +506,10 @@ class ConferenceClient:
         try:
             while self.on_meeting:
                 data = self.sockets["text"].recv(CHUNK).decode()  # Blocking receive
-                data = encrypt_decrypt(data, -8)
+                data1 = encrypt_decrypt(data, -8)
                 if data:
                     print(f"[Message]: {data}")
+                    print(f"[Message decrypt]: {data1}")
         except Exception as e:
             if self.on_meeting:
                 print(f"[Error]: Failed to receive messages. {e}")
