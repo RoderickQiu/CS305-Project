@@ -605,7 +605,7 @@ class ConferenceClient:
                         # Convert the resampled audio data back to bytes
                         data = resampled_audio_data.astype(np.int16).tobytes()
 
-                        if "audio" in self.sockets:
+                        if "audio" in self.sockets and "audio" in self.data_serve_ports:
                             try:
                                 self.sockets["audio"].sendto(
                                     data,
