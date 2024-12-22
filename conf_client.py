@@ -576,7 +576,10 @@ class ConferenceClient:
             while self.on_audio:
                 if self.streamin is None:
                     break
-                if (not self.streamin.is_active()) or self.streamin.is_stopped():
+                try:
+                    if (not self.streamin.is_active()) or self.streamin.is_stopped():
+                        break
+                except:
                     break
                 try:
                     data = self.streamin.read(CHUNK)
@@ -612,12 +615,12 @@ class ConferenceClient:
                                     (self.server_host, self.data_serve_ports["audio"]),
                                 )
                             except:
-                                traceback.print_exc()
+                                # traceback.print_exc()
                                 print("[Warn]: Empty audio")
                     except:
                         print("[Warn]: Empty Audio")
                 except:
-                    traceback.print_exc()
+                    # traceback.print_exc()
                     print("[Warn]: empty audio")
 
                 time.sleep(0.01)
