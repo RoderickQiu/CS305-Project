@@ -217,30 +217,30 @@ class MainServer:
         """
         join conference: search corresponding conference_info and ConferenceServer, and reply necessary info to client
         """
-        if conference_id not in self.conference_ids:
-            print(f"Conference {conference_id} not found")
-            return "Conference not found", 404
-
-        print(f"Joining conference {conference_id} ...")
-        self.from_info_to_conference[from_info] = conference_id
-        conference_server: ConferenceServer = self.conference_servers[conference_id]
-        conference_server.on_audio[from_info] = False
-        conference_server.on_video[from_info] = False
-
-        if conference_server.isp2p and len(conference_server.clients_info) >= 2:
-            print(f"Conference change to use server mode, switching...")
-            return (
-                json.dumps(
-                    {
-                        "should_recreate": "True",
-                        "host": self.server_ip,
-                        "conference_id": conference_id,
-                    }
-                ),
-                200,
-            )
-
         try:
+            if conference_id not in self.conference_ids:
+                print(f"Conference {conference_id} not found")
+                return "Conference not found", 404
+
+            print(f"Joining conference {conference_id} ...")
+            self.from_info_to_conference[from_info] = conference_id
+            conference_server: ConferenceServer = self.conference_servers[conference_id]
+            conference_server.on_audio[from_info] = False
+            conference_server.on_video[from_info] = False
+
+            if conference_server.isp2p and len(conference_server.clients_info) >= 2:
+                print(f"Conference change to use server mode, switching...")
+                return (
+                    json.dumps(
+                        {
+                            "should_recreate": "True",
+                            "host": self.server_ip,
+                            "conference_id": conference_id,
+                        }
+                    ),
+                    200,
+                )
+
             # build conference port's socket
             self.conference_port_save += 5 * random.randint(3, 53)
             use_port = self.conference_port_save
@@ -254,13 +254,16 @@ class MainServer:
                     (self.server_ip, use_port)
                 )
             except:
-                self.conference_port_save += 5 * random.randint(3, 53)
-                use_port = self.conference_port_save
-                conference_server.conf_serve_ports[from_info] = use_port
-                conference_server.client_conns[from_info][use_port].bind(
-                    (self.server_ip, use_port)
-                )
-                print(f"Port conflict, change to {use_port}")
+                try:
+                    self.conference_port_save += 5 * random.randint(3, 53)
+                    use_port = self.conference_port_save
+                    conference_server.conf_serve_ports[from_info] = use_port
+                    conference_server.client_conns[from_info][use_port].bind(
+                        (self.server_ip, use_port)
+                    )
+                    print(f"Port conflict, change to {use_port}")
+                except:
+                    print()
 
             self.conference_port_save += random.randint(3, 53)
 
@@ -270,17 +273,25 @@ class MainServer:
                 # build data ports' socket
                 conference_server.data_serve_ports[from_info] = {}
                 for data_type in conference_server.data_types:
-                    use_port = self.conference_port_save
-                    conference_server.data_serve_ports[from_info][data_type] = use_port
-                    conference_server.client_conns[from_info][use_port] = socket.socket(
-                        socket.AF_INET, socket.SOCK_DGRAM
-                    )
-                    conference_server.client_conns[from_info][use_port].bind(
-                        (self.server_ip, use_port)
-                    )
-                    self.conference_port_save += random.randint(3, 53)
+                    try:
+                        use_port = self.conference_port_save
+                        conference_server.data_serve_ports[from_info][
+                            data_type
+                        ] = use_port
+                        conference_server.client_conns[from_info][use_port] = (
+                            socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                        )
+                        conference_server.client_conns[from_info][use_port].bind(
+                            (self.server_ip, use_port)
+                        )
+                        self.conference_port_save += random.randint(3, 53)
+                    except:
+                        print()
 
-                save_server_port(self.conference_port_save)
+                try:
+                    save_server_port(self.conference_port_save)
+                except:
+                    print()
 
                 print(
                     f"Client {from_info} join conference {conference_id}, server mode"
@@ -331,9 +342,12 @@ class MainServer:
                     )
                     data_ports = {}
                     for item in conference_server.p2p_host_info["0"]["ports"]:
-                        data_ports[item] = conference_server.p2p_host_info["0"][
-                            "ports"
-                        ][item][1]
+                        try:
+                            data_ports[item] = conference_server.p2p_host_info["0"][
+                                "ports"
+                            ][item][1]
+                        except:
+                            print()
 
                     return (
                         json.dumps(
@@ -354,7 +368,7 @@ class MainServer:
                     )
         except Exception as e:
             print(f"Error in joining conference: {e}")
-            traceback.print_exc()
+            # traceback.print_exc()
             return "Error in joining conference", 500
 
     def handle_quit_conference(self, from_info):
@@ -402,7 +416,7 @@ class MainServer:
             print(f"Client {from_info} quit conference {conference_id}")
             return "Quit conference successfully", 200
         except Exception as e:
-            traceback.print_exc()
+            # traceback.print_exc()
             print(f"Error in quitting conference: {e}")
             return "Error in quitting conference", 500
 
@@ -430,7 +444,7 @@ class MainServer:
             return "Start data stream successfully", 200
         except Exception as e:
             print(f"Error in starting data stream: {e}")
-            traceback.print_exc()
+            # traceback.print_exc()
             return "Error in starting data stream", 500
 
     def handle_client_exit(self, from_info, current_client):
@@ -455,14 +469,17 @@ class MainServer:
                     if from_info in conference_server.clients_info:
                         conference_server.clients_info.remove(from_info)
 
-            current_client.close()
-            self.conference_conns.remove(current_client)
+            try:
+                current_client.close()
+                self.conference_conns.remove(current_client)
+            except:
+                print()
 
             print(f"Client {from_info} exit successfully")
             return "Client exit successfully", 200
         except Exception as e:
             print(f"Error in handling client exit: {e}")
-            traceback.print_exc()
+            # traceback.print_exc()
             return "Error in handling client exit", 500
 
     def handle_cancel_conference(
@@ -492,20 +509,28 @@ class MainServer:
             return "Cancelled successfully", 200
         except Exception as e:
             print(f"Error in cancelling conference: {e}")
-            traceback.print_exc()
+            # traceback.print_exc()
             return "Error in cancelling conference", 500
 
     def handle_open_audio(self, from_info):
-        conf_id = self.from_info_to_conference[from_info]
-        conference_server: ConferenceServer = self.conference_servers[conf_id]
-        conference_server.on_audio[from_info] = True
-        return "Successfully open audio", 200
+        try:
+            conf_id = self.from_info_to_conference[from_info]
+            conference_server: ConferenceServer = self.conference_servers[conf_id]
+            conference_server.on_audio[from_info] = True
+            return "Successfully open audio", 200
+        except Exception as e:
+            print(f"Error in opening audio: {e}")
+            return "Error in opening audio", 500
 
     def handle_close_audio(self, from_info):
-        conf_id = self.from_info_to_conference[from_info]
-        conference_server: ConferenceServer = self.conference_servers[conf_id]
-        conference_server.on_audio[from_info] = False
-        return "Successfully close audio", 200
+        try:
+            conf_id = self.from_info_to_conference[from_info]
+            conference_server: ConferenceServer = self.conference_servers[conf_id]
+            conference_server.on_audio[from_info] = False
+            return "Successfully close audio", 200
+        except Exception as e:
+            print(f"Error in closing audio: {e}")
+            return "Error in closing audio", 500
 
     def request_handler(self, client_socket: socket.socket, from_info):
         """
@@ -582,16 +607,19 @@ class MainServer:
                                         "1"
                                     ]["ports"][item][1]
                                 if client_id != from_info:
-                                    establish_msg = (
-                                        f"{P2P_ESTAB_MSG} {conference_server.p2p_host_info['1']['ip']} "
-                                        f"{str(data_ports).replace(' ', '')}"
-                                    )
-                                    writer.sendto(establish_msg.encode(), addr)
+                                    try:
+                                        establish_msg = (
+                                            f"{P2P_ESTAB_MSG} {conference_server.p2p_host_info['1']['ip']} "
+                                            f"{str(data_ports).replace(' ', '')}"
+                                        )
+                                        writer.sendto(establish_msg.encode(), addr)
+                                    except:
+                                        print()
 
                             response, status_code = "P2P info updated", 200
                         except Exception as e:
                             response = f"Error in updating P2P info: {e}"
-                            traceback.print_exc()
+                            # traceback.print_exc()
                             status_code = 500
                     else:
                         response = "Invalid P2P action"
@@ -625,11 +653,15 @@ class MainServer:
                     break
 
                 elif action == "link":
-                    conference_id = int(request[1])
-                    udp_info = ast.literal_eval(request[2])
-                    response, status_code = self.handle_start_data_stream(
-                        from_info, conference_id, udp_info
-                    )
+                    try:
+                        conference_id = int(request[1])
+                        udp_info = ast.literal_eval(request[2])
+                        response, status_code = self.handle_start_data_stream(
+                            from_info, conference_id, udp_info
+                        )
+                    except Exception as e:
+                        response = f"Error in starting data stream: {e}"
+                        status_code = 500
 
                 elif message == "open audio":
                     response, status_code = self.handle_open_audio(from_info)
@@ -639,7 +671,7 @@ class MainServer:
                 print(response + "\n" + str(status_code))
                 client_socket.sendall((response + "\n" + str(status_code)).encode())
             except Exception as e:
-                traceback.print_exc()
+                # traceback.print_exc()
                 print(f"Error handling request: {e}")
 
     def start(self):

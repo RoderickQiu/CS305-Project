@@ -73,12 +73,16 @@ def encrypt_decrypt(data: str, key: int) -> str:
     for char in data:
         if char.isalpha():  # Only encrypt/decrypt alphabetic characters
             shift = key if char.islower() else key
-            new_char = chr((ord(char) - ord('a') + shift) % 26 + ord('a')) if char.islower() else \
-                       chr((ord(char) - ord('A') + shift) % 26 + ord('A'))
+            new_char = (
+                chr((ord(char) - ord("a") + shift) % 26 + ord("a"))
+                if char.islower()
+                else chr((ord(char) - ord("A") + shift) % 26 + ord("A"))
+            )
             result.append(new_char)
         else:
             result.append(char)  # Non-alphabetic characters are not encrypted
-    return ''.join(result)
+    return "".join(result)
+
 
 class FlaskServer:
     def __init__(self, app, host, port):
@@ -229,7 +233,7 @@ class ConferenceClient:
         self.on_meeting = True
         self.conference_id = conference_id
 
-        self.udp_addr_count = get_client_port() + 5 * 53
+        self.udp_addr_count = get_client_port() + 5 * random.randint(3, 53)
         self.sockets["confe"].bind((self.CLIENT_IP, self.udp_addr_count))
         self.udp_addrs["confe"] = (self.CLIENT_IP, self.udp_addr_count)
         self.udp_addr_count += random.randint(3, 53)
@@ -470,7 +474,6 @@ class ConferenceClient:
 
         print(f"[Info]: List of ongoing conferences: {recv_lines[0]}")
 
-
     def send_text_message(self, message: str):
         """
         Send a text message to the server for broadcasting to other clients.
@@ -484,10 +487,11 @@ class ConferenceClient:
             return
 
         try:
-            
+
             encrypted_message = encrypt_decrypt(message, 8)
             self.sockets["text"].sendto(
-                encrypted_message.encode(), (self.server_host, self.data_serve_ports["text"])
+                encrypted_message.encode(),
+                (self.server_host, self.data_serve_ports["text"]),
             )
 
             print(f"[Info]: Message sent: {message}")
@@ -625,15 +629,17 @@ class ConferenceClient:
                                     data,
                                     (self.server_host, self.data_serve_ports["audio"]),
                                 )
-                                print(f"[Info]: Send audio to {self.server_host},{self.data_serve_ports['audio']}")
+                                # print(
+                                #     f"[Info]: Sent audio, to {self.server_host}, {self.data_serve_ports['audio']}"
+                                # )
                             except:
-                                traceback.print_exc()
+                                # traceback.print_exc()
                                 print("[Warn]: Empty audio")
                     except:
-                        traceback.print_exc()
+                        # traceback.print_exc()
                         print("[Warn]: Empty Audio")
                 except:
-                    traceback.print_exc()
+                    # traceback.print_exc()
                     print("[Warn]: empty audio")
 
                 time.sleep(0.01)
@@ -657,8 +663,10 @@ class ConferenceClient:
         while self.on_meeting:
             try:
                 if "audio" in self.sockets and "audio" in self.data_serve_ports:
+                    # print(
+                    #     f"[Info]: Receiving audio, from {self.server_host}, {self.data_serve_ports['audio']}"
+                    # )
                     data = self.sockets["audio"].recv(65535)
-                    print(f"[Info]: Send audio to {self.server_host},{self.data_serve_ports['audio']}")
                     audio_data = np.frombuffer(data, dtype=np.int16)
 
                     # Resample audio data
